@@ -432,6 +432,8 @@
     ['stock', 'reorder', 'activity', 'tools'].forEach((v) => {
       $('#v-' + v).classList.toggle('hidden', v !== view);
     });
+    const topbar = $('.topbar');
+    if (topbar) topbar.classList.toggle('is-compact-mobile', view !== 'tools');
     $('#stockHead').classList.toggle('hidden', view !== 'stock');
     renderTeamBar();
 
@@ -1005,6 +1007,14 @@
 
         <div class="panel">
           <h2 class="panel-title">${isMainAdmin() ? 'Device &amp; Reset' : 'Device &amp; Storage'}</h2>
+          <button type="button" class="list-item" id="toolsThemeBtn">
+            <span class="li-icon">${S.theme === 'dark' ? ICON.sun : ICON.moon}</span>
+            <span class="li-text">
+              <span class="li-label">Appearance · ${S.theme === 'dark' ? 'Dark Mode' : 'Light Mode'}</span>
+              <span class="li-desc">Tap to switch to ${S.theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
+            </span>
+            <span class="li-chev">${ICON.chev}</span>
+          </button>
           <div class="list-item">
             <span class="li-icon">${ICON.storage}</span>
             <span class="li-text">
@@ -2652,6 +2662,11 @@
         break;
       case 'superViewBtn':
       case 'toolsSuperViewBtn': openSuperView(); break;
+      case 'toolsThemeBtn':
+        S.theme = S.theme === 'dark' ? 'light' : 'dark';
+        save();
+        render();
+        break;
       case 'adminPanelBtn': openAdminPanel(); break;
       case 'cloudConfigBtn': openFirebaseSetup(); break;
       case 'setMyTeamBtn': openSetMyTeam(); break;

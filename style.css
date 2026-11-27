@@ -151,6 +151,19 @@
   gap: var(--space-3);
 }
 
+@media (max-width: 767px) {
+  .topbar.is-compact-mobile {
+    padding-top: calc(env(safe-area-inset-top) + var(--space-2));
+    padding-bottom: var(--space-2);
+  }
+  .topbar.is-compact-mobile .topbar-inner {
+    display: none;
+  }
+  .topbar.is-compact-mobile .team-bar {
+    margin-top: 0;
+  }
+}
+
 .brand {
   display: flex;
   align-items: center;
