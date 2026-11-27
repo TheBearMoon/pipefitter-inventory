@@ -211,6 +211,26 @@
       await this.user.updatePassword(newPassword);
     },
 
+    async adminResetPassword(targetUid, newPassword) {
+      if (!this.auth || !this.user) throw new Error('Not signed in');
+      if (!this.isAdmin() && !this.isSupervisor()) throw new Error('Admin or Supervisor access required');
+      if (!newPassword || newPassword.length < 6) throw new Error('New password must be at least 6 characters');
+      const endpoint = window.PIPEFITTER_RESET_API_URL || '';
+      if (!endpoint) throw new Error('Password reset endpoint is not configured yet');
+      const idToken = await this.user.getIdToken(true);
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + idToken
+        },
+        body: JSON.stringify({ targetUid, newPassword })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not reset password');
+      return data;
+    },
+
     stopListeners() {
       this.unsubs.forEach((fn) => { try { fn(); } catch {} });
       this.unsubs = [];

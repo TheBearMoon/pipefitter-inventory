@@ -3105,7 +3105,10 @@
             </select>` : '<div style="font-size:12px;color:var(--muted);align-self:center">Manages own teams</div>'}
         </div>
         ${u.uid !== Cloud.user.uid ? `
-          <button type="button" class="btn btn-danger adm-del-user" data-uid="${esc(u.uid)}" data-name="${esc(u.displayName || u.username)}" style="width:100%;margin-top:8px;padding:7px 10px;font-size:12px">Delete username</button>` : ''}
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+            <button type="button" class="btn btn-outline adm-reset-pw" data-uid="${esc(u.uid)}" data-name="${esc(u.displayName || u.username)}" style="padding:7px 10px;font-size:12px">Reset password</button>
+            <button type="button" class="btn btn-danger adm-del-user" data-uid="${esc(u.uid)}" data-name="${esc(u.displayName || u.username)}" style="padding:7px 10px;font-size:12px">Delete username</button>
+          </div>` : ''}
       </div>
     `).join('') || '<div class="empty-note">No accounts in this group yet.</div>';
 
@@ -3127,6 +3130,63 @@
       sel.onchange = async () => {
         await Cloud.updateUserProfile(sel.dataset.uid, { teamId: sel.value });
         toast('Updated crew team');
+      };
+    });
+    document.querySelectorAll('.adm-reset-pw').forEach((btn) => {
+      btn.onclick = () => {
+        const uid = btn.dataset.uid;
+        const nm = btn.dataset.name || 'this user';
+        openSheet(`Reset Password · ${nm}`, `
+          <div class="info-callout" style="margin-bottom:12px">
+            <span>Set a new password for <strong>${esc(nm)}</strong>. They can sign in with it immediately.</span>
+          </div>
+          <div class="field">
+            <label for="arp-new">New Password (min 6 chars)</label>
+            <input id="arp-new" type="password" placeholder="Enter new password" autocomplete="new-password">
+          </div>
+          <div class="field">
+            <label for="arp-conf">Confirm New Password</label>
+            <input id="arp-conf" type="password" placeholder="Re-enter new password" autocomplete="new-password">
+          </div>
+          <div class="field-error" id="arp-err" style="display:none"></div>
+        `,
+        `<button type="button" class="btn" style="flex:1" id="arp-cancel">Cancel</button>
+         <button type="button" class="btn btn-primary" style="flex:2" id="arp-ok">Update Password</button>`);
+        $('#arp-cancel').onclick = () => { closeSheet(); openAdminPanel(); };
+        $('#arp-ok').onclick = async () => {
+          const next = $('#arp-new').value;
+          const conf = $('#arp-conf').value;
+          const errEl = $('#arp-err');
+          errEl.style.display = 'none';
+          if (next.length < 6) {
+            errEl.textContent = 'Password must be at least 6 characters.';
+            errEl.style.display = 'block';
+            $('#arp-new').focus();
+            return;
+          }
+          if (next !== conf) {
+            errEl.textContent = 'Passwords do not match.';
+            errEl.style.display = 'block';
+            $('#arp-conf').focus();
+            return;
+          }
+          const okBtn = $('#arp-ok');
+          okBtn.disabled = true;
+          okBtn.textContent = 'Updating...';
+          try {
+            await Cloud.adminResetPassword(uid, next);
+            closeSheet();
+            toast(`Updated password for ${nm}`);
+            openAdminPanel();
+          } catch (err) {
+            errEl.textContent = err?.message || 'Could not reset password.';
+            errEl.style.display = 'block';
+          } finally {
+            okBtn.disabled = false;
+            okBtn.textContent = 'Update Password';
+          }
+        };
+        setTimeout(() => $('#arp-new')?.focus(), 200);
       };
     });
     document.querySelectorAll('.adm-del-user').forEach((btn) => {
