@@ -3011,7 +3011,7 @@ button.list-item:active {
 
 .pkg-grid {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
 }
 
@@ -3030,6 +3030,9 @@ button.list-item:active {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   cursor: pointer;
   transition: border-color 0.15s ease, transform 0.12s ease;
 }
@@ -3060,6 +3063,7 @@ button.list-item:active {
   font-weight: 700;
   line-height: 1.25;
   color: var(--color-text);
+  overflow-wrap: anywhere;
 }
 
 .pkg-card-meta {
@@ -3199,6 +3203,8 @@ button.list-item:active {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  min-width: 0;
+  max-width: 100%;
   padding-top: 8px;
   border-top: 1px solid var(--color-divider);
   font-size: 12px;
@@ -3211,6 +3217,7 @@ button.list-item:active {
   gap: 5px;
   min-width: 0;
   flex: 1;
+  overflow: hidden;
 }
 
 .pkg-foot-note svg {
@@ -3480,6 +3487,9 @@ button.list-item:active {
   font-size: 13px;
   color: var(--color-text);
   line-height: 1.35;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: pre-wrap;
 }
 
 .pkg-hist-meta {
