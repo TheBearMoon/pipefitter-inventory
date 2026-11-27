@@ -1417,11 +1417,21 @@
     const totalLow = lowItems(S.items).length;
     let body = '<div>';
 
-    S.teams.forEach((t) => {
+    const sortedTeams = S.teams.slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { numeric: true }));
+    sortedTeams.forEach((t) => {
       const boxes = conexesForTeam(t.id);
-      const isMine = t.id === S.myTeamId;
-      const isUnlocked = unlockedTeams.has(t.id);
-      body += `<div class="section-div" style="margin-top:var(--space-2)">${esc(teamDisplayName(t))}${isMine ? ' (My Team)' : (isUnlocked ? ' (Unlocked)' : ' · View only')}</div>`;
+      const isCloud = Boolean(Cloud.user && Cloud.profile);
+      const isCrewOwn = isCloud ? (Cloud.profile.role === 'crew' && t.id === Cloud.profile.teamId) : (t.id === S.myTeamId);
+      const canEditThisTeam = isCloud
+        ? (Cloud.profile.role === 'admin'
+            || (Cloud.profile.role === 'supervisor' && t.supervisorId === Cloud.user.uid)
+            || isCrewOwn)
+        : (isCrewOwn || unlockedTeams.has(t.id));
+      const dispName = teamDisplayName(t);
+      const hasDistinctTeam = t.name && dispName.toLowerCase() !== t.name.toLowerCase();
+      const teamHeading = hasDistinctTeam ? `${dispName} · ${t.name}` : dispName;
+      const statusSuffix = isCrewOwn ? ' (My Team)' : (!canEditThisTeam ? ' · View only' : '');
+      body += `<div class="section-div" style="margin-top:var(--space-2)">${esc(teamHeading)}${statusSuffix}</div>`;
 
       if (boxes.length > 1) {
         const teamItemCnt = S.items.filter((i) => boxes.some((b) => b.id === i.conexId)).length;
@@ -1429,7 +1439,7 @@
         body += `
           <button type="button" class="team-option ${active ? 'is-active' : ''}" data-pick-conex="team:${esc(t.id)}">
             <div class="team-option-copy">
-              <div class="team-option-title"><span>All ${esc(teamDisplayName(t))}</span><span class="conex-pill">${boxes.length} CONEX</span></div>
+              <div class="team-option-title"><span>All ${esc(teamHeading)}</span><span class="conex-pill">${boxes.length} CONEX</span></div>
               <div class="team-option-meta">${teamItemCnt} parts across ${boxes.map((b) => b.name).join(' & ')}</div>
             </div>
             ${active ? ICON.check : ''}
@@ -1440,12 +1450,14 @@
         const items = S.items.filter((i) => i.conexId === c.id);
         const lows = items.filter((i) => statusOf(i) !== 'ok').length;
         const active = S.activeConex === c.id;
+        const lockedBox = !canEditConex(c.id);
         body += `
           <button type="button" class="team-option ${active ? 'is-active' : ''}" data-pick-conex="${esc(c.id)}">
             <div class="team-option-copy">
               <div class="team-option-title">
                 <span>${esc(c.name)}</span>
-                ${!isMine && !isUnlocked ? `<span class="lock-pill">View only</span>` : ''}
+                ${hasDistinctTeam ? `<span class="conex-pill">${esc(t.name)}</span>` : ''}
+                ${lockedBox ? `<span class="lock-pill">View only</span>` : ''}
               </div>
               <div class="team-option-meta">${items.length} part${items.length === 1 ? '' : 's'}${lows ? ` · ${lows} low/out` : ' · All stocked'}</div>
             </div>
