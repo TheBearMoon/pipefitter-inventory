@@ -387,8 +387,8 @@
 
     const svBtn = $('#superViewBtn');
     if (svBtn) {
-      const isAdmin = Boolean(Cloud.user && Cloud.profile?.role === 'admin');
-      svBtn.classList.toggle('hidden', !isAdmin);
+      const canSuperView = Boolean(Cloud.user && (Cloud.profile?.role === 'admin' || Cloud.profile?.role === 'supervisor'));
+      svBtn.classList.toggle('hidden', !canSuperView);
     }
   }
 
@@ -771,12 +771,12 @@
             </span>
             <span class="li-chev">${ICON.chev}</span>
           </button>
-          ${Cloud.user && Cloud.profile?.role === 'admin' ? `
+          ${Cloud.user && (Cloud.profile?.role === 'admin' || Cloud.profile?.role === 'supervisor') ? `
             <button type="button" class="list-item" id="toolsSuperViewBtn">
               <span class="li-icon">${ICON.grid}</span>
               <span class="li-text">
-                <span class="li-label">Admin Super View</span>
-                <span class="li-desc">Browse all crews and search materials across every Conex box</span>
+                <span class="li-label">${Cloud.profile?.role === 'admin' ? 'Admin Super View' : 'Super View'}</span>
+                <span class="li-desc">${Cloud.profile?.role === 'admin' ? 'Browse all crews and search materials across every Conex box' : 'Browse your crews and search materials across your Conex boxes'}</span>
               </span>
               <span class="li-chev">${ICON.chev}</span>
             </button>` : ''}
@@ -2766,13 +2766,16 @@
   }
 
   function openSuperView() {
-    if (!Cloud.user || Cloud.profile?.role !== 'admin') {
-      toast('Main Admin access required');
+    const isAdmin = Boolean(Cloud.user && Cloud.profile?.role === 'admin');
+    const isSup = Boolean(Cloud.user && Cloud.profile?.role === 'supervisor');
+    if (!isAdmin && !isSup) {
+      toast('Admin or Supervisor access required');
       return;
     }
-    const sups = Cloud.supervisors ? Cloud.supervisors() : [];
+    const sups = isAdmin && Cloud.supervisors ? Cloud.supervisors() : [];
     const supNameById = (sid) => {
       if (!sid) return 'Main Yard';
+      if (isSup && sid === Cloud.user.uid) return Cloud.profile?.displayName || Cloud.profile?.username || 'My Group';
       const u = sups.find((x) => x.uid === sid);
       return u ? (u.displayName || u.username) : 'Supervisor';
     };
@@ -2788,12 +2791,12 @@
       return q.split(/\s+/).every((tok) => hay.includes(tok));
     };
 
-    openSheet('Admin Super View', `
+    openSheet(isAdmin ? 'Admin Super View' : 'Supervisor Super View', `
       <div class="sv-search">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="16" height="16"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
         <input id="sv-q" type="search" placeholder="Search material, size, bin, crew, or Conex…" autocomplete="off">
       </div>
-      ${sups.length ? `<div class="sv-chips" id="sv-chips"></div>` : ''}
+      ${isAdmin && sups.length ? `<div class="sv-chips" id="sv-chips"></div>` : ''}
       <div id="sv-meta" class="sv-crew-meta" style="margin-bottom:10px"></div>
       <div id="sv-body"></div>
     `,
@@ -2803,16 +2806,19 @@
 
     const renderSuperView = () => {
       const q = svQuery.trim().toLowerCase();
+      const scopeTeams = isAdmin
+        ? S.teams
+        : S.teams.filter((t) => t.supervisorId === Cloud.user.uid);
 
-      if (sups.length && $('#sv-chips')) {
-        const hasUnassigned = S.teams.some((t) => !t.supervisorId);
+      if (isAdmin && sups.length && $('#sv-chips')) {
+        const hasUnassigned = scopeTeams.some((t) => !t.supervisorId);
         const chips = [
-          { id: 'all', label: `All (${S.teams.length})` },
+          { id: 'all', label: `All (${scopeTeams.length})` },
           ...sups.map((s) => ({
             id: s.uid,
-            label: `${s.displayName || s.username} (${S.teams.filter((t) => t.supervisorId === s.uid).length})`
+            label: `${s.displayName || s.username} (${scopeTeams.filter((t) => t.supervisorId === s.uid).length})`
           })),
-          ...(hasUnassigned ? [{ id: '__none__', label: `Unassigned (${S.teams.filter((t) => !t.supervisorId).length})` }] : [])
+          ...(hasUnassigned ? [{ id: '__none__', label: `Unassigned (${scopeTeams.filter((t) => !t.supervisorId).length})` }] : [])
         ];
         $('#sv-chips').innerHTML = chips.map((c) => `
           <button type="button" class="sv-chip ${svSup === c.id ? 'is-active' : ''}" data-sv-sup="${esc(c.id)}">${esc(c.label)}</button>
@@ -2822,8 +2828,8 @@
         });
       }
 
-      const filteredTeams = S.teams.filter((t) => {
-        if (svSup === 'all') return true;
+      const filteredTeams = scopeTeams.filter((t) => {
+        if (!isAdmin || svSup === 'all') return true;
         if (svSup === '__none__') return !t.supervisorId;
         return t.supervisorId === svSup;
       });
