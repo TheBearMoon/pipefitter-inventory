@@ -1666,8 +1666,8 @@ button.list-item:active {
 
 .mode-tabs {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-1);
+  grid-template-columns: repeat(4, 1fr);
+  gap: 3px;
   padding: var(--space-1);
   background: var(--color-surface-well);
   border-radius: var(--radius-md);
@@ -1676,10 +1676,12 @@ button.list-item:active {
 
 .mode-tabs button {
   height: 40px;
+  padding: 0 4px;
   border-radius: var(--radius-sm);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   font-weight: 650;
   color: var(--color-text-secondary);
+  white-space: nowrap;
 }
 
 .mode-tabs button.is-active {
@@ -1696,6 +1698,7 @@ button.list-item:active {
   color: var(--color-ok);
 }
 
+.mode-tabs button.is-active[data-mode='xfer'],
 .mode-tabs button.is-active[data-mode='set'] {
   color: var(--color-primary);
 }
@@ -2024,3 +2027,247 @@ button.list-item:active {
     border-color: var(--color-border);
   }
 }
+
+/* ==========================================================================
+   Team / Conex Switcher, Transfer, & Editable Photo Library
+   ========================================================================== */
+
+.team-bar {
+  margin-top: var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.team-switch-btn {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-xs);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  font-weight: 650;
+  text-align: left;
+}
+
+.team-switch-btn:hover {
+  border-color: var(--color-border-strong);
+}
+
+.team-switch-btn:active {
+  transform: scale(0.99);
+}
+
+.team-switch-btn svg {
+  width: 18px;
+  height: 18px;
+  color: var(--color-primary);
+  flex: none;
+}
+
+.team-switch-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.conex-pill {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--radius-xs);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  white-space: nowrap;
+  flex: none;
+}
+
+.team-switch-chev {
+  margin-left: auto;
+  color: var(--color-text-muted) !important;
+}
+
+.team-all-btn {
+  height: 44px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-well);
+  border: 1px solid transparent;
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  white-space: nowrap;
+  flex: none;
+}
+
+.team-all-btn.is-active {
+  background: var(--color-primary);
+  color: var(--color-primary-ink);
+}
+
+.conex-tag {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--color-text-secondary);
+  background: var(--color-surface-well);
+  padding: 2px 7px;
+  border-radius: var(--radius-xs);
+  white-space: nowrap;
+}
+
+/* Switch Team Sheet Options */
+.team-option {
+  width: 100%;
+  min-height: 56px;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  text-align: left;
+  margin-bottom: var(--space-1);
+  border: 1.5px solid transparent;
+}
+
+.team-option:hover {
+  background: var(--color-surface-well);
+}
+
+.team-option.is-active {
+  background: var(--color-primary-soft);
+  border-color: var(--color-primary);
+}
+
+.team-option-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.team-option-title {
+  font-size: var(--text-sm);
+  font-weight: 650;
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.team-option-meta {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+.team-option svg {
+  width: 18px;
+  height: 18px;
+  color: var(--color-primary);
+  flex: none;
+}
+
+/* Transfer panel inside Count Sheet */
+.transfer-box {
+  background: var(--color-surface-well);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.transfer-box label {
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-2);
+}
+
+.transfer-box select {
+  width: 100%;
+  height: 44px;
+  padding: 0 34px 0 12px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--color-border-strong);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.act-delta.xfer {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+/* Editable Hardware Photo Library Grid in Tools */
+.lib-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+}
+
+.lib-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-well);
+  border: 1.5px solid transparent;
+  transition: border-color var(--ease-snap), transform var(--ease-snap);
+}
+
+.lib-card:hover {
+  border-color: var(--color-primary);
+}
+
+.lib-card:active {
+  transform: scale(0.96);
+}
+
+.lib-card-img {
+  width: 60px;
+  height: 60px;
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  padding: 3px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.lib-card-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.lib-card-label {
+  font-size: var(--text-xs);
+  font-weight: 650;
+  color: var(--color-text);
+  text-align: center;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (min-width: 768px) {
+  .team-switch-btn {
+    flex: 0 1 340px;
+  }
+}
+
