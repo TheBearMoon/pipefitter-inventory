@@ -86,5 +86,25 @@ service cloud.firestore {
       allow create: if signedIn();
       allow update, delete: if isAdmin();
     }
+
+    // Status Packages (each package has teamId, supervisorId, createdByUid, checklist, notes):
+    // - Main Admin: full read/write/delete across all crews.
+    // - Supervisor: full read/write/delete/transfer strictly within their own supervisorId.
+    // - Crew: read/write/delete ONLY packages assigned to their teamId or created by them; cannot transfer to another team.
+    match /packages/{pkgId} {
+      allow read: if isAdmin()
+        || (isSupervisor() && resource.data.supervisorId == request.auth.uid)
+        || (signedIn() && me().role == 'crew' && (resource.data.teamId == me().teamId || resource.data.createdByUid == request.auth.uid));
+      allow create: if isAdmin()
+        || (isSupervisor() && request.resource.data.supervisorId == request.auth.uid)
+        || (signedIn() && me().role == 'crew' && request.resource.data.teamId == me().teamId && request.resource.data.supervisorId == mySupId());
+      allow update: if isAdmin()
+        || (isSupervisor() && resource.data.supervisorId == request.auth.uid && request.resource.data.supervisorId == request.auth.uid)
+        || (signedIn() && me().role == 'crew' && (resource.data.teamId == me().teamId || resource.data.createdByUid == request.auth.uid)
+            && request.resource.data.teamId == resource.data.teamId && request.resource.data.supervisorId == resource.data.supervisorId);
+      allow delete: if isAdmin()
+        || (isSupervisor() && resource.data.supervisorId == request.auth.uid)
+        || (signedIn() && me().role == 'crew' && (resource.data.teamId == me().teamId || resource.data.createdByUid == request.auth.uid));
+    }
   }
 }

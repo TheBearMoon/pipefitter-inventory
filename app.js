@@ -36,7 +36,11 @@
     moon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg>',
     share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7M16 6l-4-4-4 4M12 2v13"/></svg>',
     reset: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 103-6.7L3 8"/><path d="M3 3v5h5"/></svg>',
-    xfer: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3l4 4-4 4"/><path d="M3 7h18"/><path d="M7 21l-4-4 4-4"/><path d="M21 17H3"/></svg>'
+    xfer: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3l4 4-4 4"/><path d="M3 7h18"/><path d="M7 21l-4-4 4-4"/><path d="M21 17H3"/></svg>',
+    activity: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-7.5L14 19.5l3-7.5h4"/></svg>',
+    clipboard: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 14l2 2 4-4"/></svg>',
+    back: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>',
+    note: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>'
   };
 
   const DEFAULT_PHOTO_LIB = [
@@ -110,6 +114,7 @@
     activeConex: 'conex-1',   // 'conex-1' | 'team:<id>' | 'all'
     pin: '',                  // Optional 4-digit supervisor PIN for unlocking other teams & whole-Conex transfers
     photoLib: DEFAULT_PHOTO_LIB.map((p) => ({ ...p })),
+    packages: [],
     theme: null,
     sort: 'name',
     seeded: false,
@@ -119,6 +124,8 @@
   let view = 'stock';
   let cat = 'All';
   let statusFilter = 'all';
+  let pkgStatusFilter = 'all';
+  let pkgQuery = '';
   let actFilter = 'all';
   let query = '';
   let lastPopId = null;
@@ -228,6 +235,10 @@
     }
     if (!Array.isArray(S.photoLib)) {
       S.photoLib = DEFAULT_PHOTO_LIB.map((p) => ({ ...p }));
+      changed = true;
+    }
+    if (!Array.isArray(S.packages)) {
+      S.packages = [];
       changed = true;
     }
     if (typeof S.pin !== 'string') { S.pin = ''; changed = true; }
@@ -469,19 +480,22 @@
 
   function render() {
     applyTheme();
+    const navView = view === 'activity' ? 'tools' : view;
     document.querySelectorAll('[data-v]').forEach((b) => {
-      const active = b.dataset.v === view;
+      const active = b.dataset.v === navView;
       b.classList.toggle('is-active', active);
       if (active) b.setAttribute('aria-current', 'page');
       else b.removeAttribute('aria-current');
     });
-    ['stock', 'reorder', 'activity', 'tools'].forEach((v) => {
+    ['stock', 'reorder', 'status', 'activity', 'tools'].forEach((v) => {
       $('#v-' + v).classList.toggle('hidden', v !== view);
     });
     const topbar = $('.topbar');
     if (topbar) topbar.classList.toggle('is-compact-mobile', view !== 'tools');
     $('#stockHead').classList.toggle('hidden', view !== 'stock');
-    renderTeamBar();
+    const tb = $('#teamBar');
+    if (tb) tb.classList.toggle('hidden', view === 'status');
+    if (view !== 'status') renderTeamBar();
 
     const scoped = scopedItems();
     const lows = lowItems(scoped);
@@ -503,16 +517,20 @@
       ? `${scoped.length} part${scoped.length === 1 ? '' : 's'} · ${n} need${n === 1 ? 's' : ''} reorder`
       : `${scoped.length} part${scoped.length === 1 ? '' : 's'} · All stocked`;
 
+    const visPkgs = visiblePackages();
+    const activePkgs = visPkgs.filter((p) => p.status !== 'completed').length;
+
     const titles = {
       stock: ['Pipefitter Inventory', stockSub],
       reorder: ['Reorder List', n ? `${n} part${n === 1 ? '' : 's'} at or below minimum` : 'Everything above minimum'],
+      status: ['Package Status', `${visPkgs.length} package${visPkgs.length === 1 ? '' : 's'} · ${activePkgs} open`],
       activity: ['Activity Log', `${scopeLogs.length} recorded update${scopeLogs.length === 1 ? '' : 's'}`],
       tools: ['Tools & Settings', 'Teams, Conex boxes, photo library & security']
     };
     $('#pageTitle').textContent = titles[view][0];
     $('#pageSub').textContent = titles[view][1];
 
-    ({ stock: renderStock, reorder: renderReorder, activity: renderActivity, tools: renderTools })[view]();
+    ({ stock: renderStock, reorder: renderReorder, status: renderStatus, activity: renderActivity, tools: renderTools })[view]();
     lastPopId = null;
   }
 
@@ -803,13 +821,643 @@
       </div>`;
   }
 
+  // ---------- Status & Packages ----------
+  const PKG_STATUS_META = {
+    pending: { label: 'Pending', cls: 'pending' },
+    in_progress: { label: 'In Progress', cls: 'in_progress' },
+    completed: { label: 'Completed', cls: 'completed' }
+  };
+
+  function pkgUid(prefix) {
+    return (prefix || 'pkg') + '_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
+  }
+
+  function pkgActorName() {
+    if (Cloud.profile) return Cloud.profile.displayName || Cloud.profile.username || 'User';
+    return 'Local User';
+  }
+
+  function syncPackageToCloud(pkg) {
+    if (!Cloud.ready || !Cloud.user || !pkg || !pkg.id) return;
+    const tm = teamById(pkg.teamId);
+    const supId = pkg.supervisorId
+      || (tm && tm.supervisorId)
+      || (Cloud.isSupervisor && Cloud.isSupervisor() ? Cloud.user.uid : (Cloud.profile?.supervisorId || ''));
+    const payload = { ...pkg, supervisorId: supId };
+    pkg.supervisorId = supId;
+    Cloud.pushPackage(payload).catch((e) => console.warn('[PipefitterCloud] pushPackage failed:', e && e.message));
+  }
+
+  function deletePackageFromCloud(pkgId) {
+    if (!Cloud.ready || !Cloud.user || !pkgId) return;
+    Cloud.deletePackage(pkgId).catch((e) => console.warn('[PipefitterCloud] deletePackage failed:', e && e.message));
+  }
+
+  function pkgTeamLabel(teamId) {
+    const tm = teamById(teamId);
+    if (!tm) return 'Unassigned';
+    const disp = teamDisplayName(tm);
+    const hasDistinct = tm.name && disp && disp.toLowerCase() !== tm.name.toLowerCase();
+    return hasDistinct ? `${tm.name} · ${disp}` : (tm.name || disp);
+  }
+
+  function teamsInPackageScope() {
+    if (Cloud.user && Cloud.profile) {
+      if (Cloud.profile.role === 'admin') {
+        return S.teams.slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      }
+      if (Cloud.profile.role === 'supervisor') {
+        return S.teams
+          .filter((t) => t.supervisorId === Cloud.user.uid)
+          .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      }
+      const mine = teamById(Cloud.profile.teamId || S.myTeamId);
+      return mine ? [mine] : [];
+    }
+    return S.teams.slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  }
+
+  function visiblePackages() {
+    const all = Array.isArray(S.packages) ? S.packages : [];
+    if (Cloud.user && Cloud.profile) {
+      if (Cloud.profile.role === 'admin') return all.slice();
+      if (Cloud.profile.role === 'supervisor') {
+        return all.filter((p) => {
+          const tm = teamById(p.teamId);
+          return p.supervisorId === Cloud.user.uid || (tm && tm.supervisorId === Cloud.user.uid) || p.createdByUid === Cloud.user.uid;
+        });
+      }
+      const myTid = Cloud.profile.teamId || S.myTeamId;
+      return all.filter((p) => p.teamId === myTid || p.createdByUid === Cloud.user.uid);
+    }
+    return all.slice();
+  }
+
+  function transferableTeamsForPackage(pkg) {
+    if (!pkg || !canManageYard()) return [];
+    return teamsInPackageScope().filter((t) => t.id !== pkg.teamId);
+  }
+
+  function fmtDateTime(ts) {
+    if (!ts) return '';
+    return `${fmtDay(ts)} · ${fmtTime(ts)}`;
+  }
+
+  function renderStatus() {
+    const base = visiblePackages().sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
+    const cntPending = base.filter((p) => p.status === 'pending').length;
+    const cntProgress = base.filter((p) => p.status === 'in_progress').length;
+    const cntDone = base.filter((p) => p.status === 'completed').length;
+
+    const q = pkgQuery.trim().toLowerCase();
+    const filtered = base.filter((p) => {
+      if (pkgStatusFilter !== 'all' && p.status !== pkgStatusFilter) return false;
+      if (!q) return true;
+      const hay = [
+        p.name,
+        p.jobNumber,
+        pkgTeamLabel(p.teamId),
+        ...(p.checklist || []).map((c) => `${c.name} ${c.spec || ''}`),
+        ...(p.notes || []).map((n) => `${n.text} ${n.author || ''}`)
+      ].join(' ').toLowerCase();
+      return hay.includes(q);
+    });
+
+    const toolbarHtml = `
+      <div class="pkg-toolbar">
+        <div class="pkg-search-row">
+          <div class="search-box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+            <input id="pkgSearch" type="search" value="${esc(pkgQuery)}" placeholder="Search package, crew, material…" autocomplete="off" aria-label="Search packages">
+          </div>
+          <button type="button" class="btn btn-primary pkg-new-btn" id="newPkgBtn">${ICON.plus}<span>New Package</span></button>
+        </div>
+        <div class="status-bar">
+          <div class="status-filters" role="group" aria-label="Filter packages by status">
+            ${[
+              ['all', 'All', base.length, ''],
+              ['pending', 'Pending', cntPending, 'low'],
+              ['in_progress', 'In Progress', cntProgress, 'prog'],
+              ['completed', 'Completed', cntDone, 'ok']
+            ].map(([k, lbl, num, dot]) => `
+              <button type="button" class="status-chip ${pkgStatusFilter === k ? 'is-active' : ''}" data-pkg-st="${k}" aria-pressed="${pkgStatusFilter === k}">
+                ${dot ? `<span class="st-dot ${dot}" aria-hidden="true"></span>` : ''}${lbl} <span class="st-num">${num}</span>
+              </button>
+            `).join('')}
+          </div>
+        </div>
+      </div>`;
+
+    if (!filtered.length) {
+      const hasAny = base.length > 0;
+      $('#v-status').innerHTML = `${toolbarHtml}
+        <div class="empty-state">
+          <div class="empty-icon">${ICON.clipboard}</div>
+          <h3>${hasAny ? 'No matching packages' : 'No packages yet'}</h3>
+          <p>${hasAny ? 'Try clearing your search or switching back to All statuses.' : 'Create a package to track the materials, checklist, and notes needed to complete and sell off a job.'}</p>
+          ${hasAny
+            ? `<button type="button" class="btn btn-outline" id="clearPkgFiltersBtn">Show all packages</button>`
+            : `<button type="button" class="btn btn-primary" id="emptyNewPkgBtn">${ICON.plus}Create first package</button>`}
+        </div>`;
+      return;
+    }
+
+    const cardsHtml = filtered.map((p) => {
+      const sm = PKG_STATUS_META[p.status] || PKG_STATUS_META.pending;
+      const list = Array.isArray(p.checklist) ? p.checklist : [];
+      const doneCnt = list.filter((c) => c.done).length;
+      const pct = list.length ? Math.round((doneCnt / list.length) * 100) : (p.status === 'completed' ? 100 : 0);
+      const notes = Array.isArray(p.notes) ? p.notes : [];
+      const noteOnly = notes.filter((n) => !n.type || n.type === 'note');
+      const latestNote = noteOnly[0] || notes[0] || null;
+      const previewItems = list.slice(0, 3);
+      return `
+        <article class="pkg-card" data-open-pkg="${esc(p.id)}" role="button" tabindex="0" aria-label="Open package ${esc(p.name)}">
+          <div class="pkg-card-head">
+            <div class="pkg-card-titles">
+              <h2 class="pkg-card-name">${esc(p.name)}</h2>
+              <div class="pkg-card-meta">
+                ${p.jobNumber ? `<span class="bin-tag">${esc(p.jobNumber)}</span>` : ''}
+                <span class="crew-tag">${esc(pkgTeamLabel(p.teamId))}</span>
+              </div>
+            </div>
+            <span class="pkg-status-pill is-${sm.cls}">${sm.label}</span>
+          </div>
+
+          <div class="pkg-progress-wrap">
+            <div class="pkg-progress-row">
+              <span>${list.length ? `${doneCnt} of ${list.length} material${list.length === 1 ? '' : 's'} ready` : 'No materials listed yet'}</span>
+              <span class="pkg-pct">${pct}%</span>
+            </div>
+            <div class="pkg-progress-bar" aria-hidden="true">
+              <span class="pkg-progress-fill is-${sm.cls}" style="width:${pct}%"></span>
+            </div>
+          </div>
+
+          ${previewItems.length ? `
+            <div class="pkg-preview-list">
+              ${previewItems.map((c) => `
+                <div class="pkg-preview-item ${c.done ? 'is-done' : ''}">
+                  <span class="pkg-preview-dot">${c.done ? '✓' : '•'}</span>
+                  <span class="pkg-preview-name">${esc(c.name)}${c.spec ? ` <small>${esc(c.spec)}</small>` : ''}</span>
+                  <span class="pkg-preview-qty">${c.qtyNeeded} ${esc(c.unit || 'ea')}</span>
+                </div>`).join('')}
+              ${list.length > 3 ? `<div class="pkg-preview-more">+${list.length - 3} more material${list.length - 3 === 1 ? '' : 's'}</div>` : ''}
+            </div>` : ''}
+
+          <div class="pkg-card-foot">
+            <span class="pkg-foot-note">
+              ${ICON.note}
+              <span>${latestNote ? esc(latestNote.text) : 'No notes yet'}</span>
+            </span>
+            <span class="pkg-foot-time">${esc(fmtDay(p.updatedAt || p.createdAt))}</span>
+          </div>
+        </article>`;
+    }).join('');
+
+    $('#v-status').innerHTML = `${toolbarHtml}<div class="pkg-grid">${cardsHtml}</div>`;
+  }
+
+  function openPackageEditor(pkgId) {
+    const existing = pkgId ? S.packages.find((p) => p.id === pkgId) : null;
+    const teams = teamsInPackageScope();
+    const defaultTeamId = existing
+      ? existing.teamId
+      : (Cloud.profile?.role === 'crew' ? (Cloud.profile.teamId || S.myTeamId) : (teams[0]?.id || S.myTeamId));
+    const canPickTeam = canManageYard() && teams.length > 1;
+
+    openSheet(existing ? 'Edit Package' : 'New Package', `
+      <div class="field" id="fg-pkgname">
+        <label for="pkg-name">Package Name</label>
+        <input id="pkg-name" type="text" placeholder="e.g. ISO-1042 Spool #3 or Line 4B Tie-In" value="${existing ? esc(existing.name) : ''}">
+        <div class="field-error">Enter a package name.</div>
+      </div>
+      <div class="field">
+        <label for="pkg-job">Job / ISO / Area (optional)</label>
+        <input id="pkg-job" type="text" placeholder="e.g. Rack 4 · ISO-209" value="${existing ? esc(existing.jobNumber || '') : ''}">
+      </div>
+      <div class="field">
+        <label for="pkg-status">Status</label>
+        <select id="pkg-status">
+          <option value="pending" ${(!existing || existing.status === 'pending') ? 'selected' : ''}>Pending</option>
+          <option value="in_progress" ${existing?.status === 'in_progress' ? 'selected' : ''}>In Progress</option>
+          <option value="completed" ${existing?.status === 'completed' ? 'selected' : ''}>Completed</option>
+        </select>
+      </div>
+      ${canPickTeam ? `
+        <div class="field">
+          <label for="pkg-team">Assign to Crew</label>
+          <select id="pkg-team">
+            ${teams.map((t) => `<option value="${esc(t.id)}" ${t.id === defaultTeamId ? 'selected' : ''}>${esc(pkgTeamLabel(t.id))}</option>`).join('')}
+          </select>
+        </div>` : `
+        <div class="info-callout" style="margin-bottom:12px">
+          <span>Assigned to <strong>${esc(pkgTeamLabel(defaultTeamId))}</strong></span>
+        </div>`}
+      ${!existing ? `
+        <div class="field">
+          <label for="pkg-init-note">Initial Note (optional)</label>
+          <textarea id="pkg-init-note" rows="2" placeholder="Any kickoff notes, weld specs, or sell-off details…"></textarea>
+        </div>` : ''}
+      ${existing ? `
+        <button type="button" class="btn btn-danger" style="width:100%;margin-top:8px" id="pkg-delete-btn">${ICON.trash}Delete Package</button>` : ''}
+    `,
+    `<button type="button" class="btn" style="flex:1" id="pkg-cancel">Cancel</button>
+     <button type="button" class="btn btn-primary" style="flex:2" id="pkg-save">${existing ? 'Save Changes' : 'Create Package'}</button>`);
+
+    $('#pkg-cancel').onclick = () => {
+      if (existing) openPackageDetail(existing.id);
+      else closeSheet();
+    };
+    $('#pkg-name').oninput = () => $('#fg-pkgname').classList.remove('has-error');
+
+    if (existing && $('#pkg-delete-btn')) {
+      $('#pkg-delete-btn').onclick = () => {
+        S.packages = S.packages.filter((p) => p.id !== existing.id);
+        deletePackageFromCloud(existing.id);
+        save();
+        closeSheet();
+        render();
+        toast('Package deleted');
+      };
+    }
+
+    $('#pkg-save').onclick = () => {
+      const name = $('#pkg-name').value.trim();
+      if (!name) {
+        $('#fg-pkgname').classList.add('has-error');
+        $('#pkg-name').focus();
+        return;
+      }
+      const jobNumber = $('#pkg-job').value.trim();
+      const status = $('#pkg-status').value || 'pending';
+      const teamId = $('#pkg-team') ? $('#pkg-team').value : defaultTeamId;
+      const tm = teamById(teamId);
+      const supId = (tm && tm.supervisorId)
+        || (Cloud.isSupervisor && Cloud.isSupervisor() ? Cloud.user.uid : (Cloud.profile?.supervisorId || ''));
+      const now = Date.now();
+      const actor = pkgActorName();
+
+      if (existing) {
+        const prevStatus = existing.status;
+        const prevTeamId = existing.teamId;
+        existing.name = name;
+        existing.jobNumber = jobNumber;
+        existing.status = status;
+        existing.teamId = teamId;
+        existing.supervisorId = supId;
+        existing.updatedAt = now;
+        if (!Array.isArray(existing.notes)) existing.notes = [];
+        if (prevStatus !== status) {
+          existing.notes.unshift({
+            id: pkgUid('n'),
+            type: 'status',
+            text: `Status changed to ${PKG_STATUS_META[status]?.label || status}`,
+            author: actor,
+            authorUid: Cloud.user?.uid || '',
+            ts: now
+          });
+        }
+        if (prevTeamId !== teamId) {
+          existing.notes.unshift({
+            id: pkgUid('n'),
+            type: 'transfer',
+            text: `Transferred from ${pkgTeamLabel(prevTeamId)} to ${pkgTeamLabel(teamId)}`,
+            author: actor,
+            authorUid: Cloud.user?.uid || '',
+            ts: now
+          });
+        }
+        syncPackageToCloud(existing);
+        save();
+        render();
+        toast('Package updated');
+        openPackageDetail(existing.id);
+      } else {
+        const initNote = $('#pkg-init-note')?.value.trim() || '';
+        const notes = [];
+        if (initNote) {
+          notes.push({
+            id: pkgUid('n'),
+            type: 'note',
+            text: initNote,
+            author: actor,
+            authorUid: Cloud.user?.uid || '',
+            ts: now
+          });
+        }
+        notes.push({
+          id: pkgUid('n'),
+          type: 'status',
+          text: `Package created (${PKG_STATUS_META[status]?.label || status})`,
+          author: actor,
+          authorUid: Cloud.user?.uid || '',
+          ts: now
+        });
+        const newPkg = {
+          id: pkgUid('pkg'),
+          name,
+          jobNumber,
+          status,
+          teamId,
+          supervisorId: supId,
+          createdByUid: Cloud.user?.uid || '',
+          createdByName: actor,
+          createdAt: now,
+          updatedAt: now,
+          checklist: [],
+          notes
+        };
+        S.packages.unshift(newPkg);
+        syncPackageToCloud(newPkg);
+        save();
+        render();
+        toast('Package created');
+        openPackageDetail(newPkg.id);
+      }
+    };
+  }
+
+  function openPackageTransfer(pkgId) {
+    const pkg = S.packages.find((p) => p.id === pkgId);
+    if (!pkg) return;
+    const targets = transferableTeamsForPackage(pkg);
+    if (!targets.length) {
+      toast('No other crews available to transfer to');
+      return;
+    }
+    openSheet('Transfer Package', `
+      <div class="info-callout" style="margin-bottom:14px">
+        <span>Moving <strong>${esc(pkg.name)}</strong> from <strong>${esc(pkgTeamLabel(pkg.teamId))}</strong>.</span>
+      </div>
+      <div class="field">
+        <label for="pkg-xfer-team">Transfer to Crew</label>
+        <select id="pkg-xfer-team">
+          ${targets.map((t) => `<option value="${esc(t.id)}">${esc(pkgTeamLabel(t.id))}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field">
+        <label for="pkg-xfer-note">Transfer Note (optional)</label>
+        <input id="pkg-xfer-note" type="text" placeholder="e.g. Handing off for night shift">
+      </div>
+    `,
+    `<button type="button" class="btn" style="flex:1" id="pkg-xfer-back">Back</button>
+     <button type="button" class="btn btn-primary" style="flex:2" id="pkg-xfer-go">${ICON.xfer}Transfer Package</button>`);
+
+    $('#pkg-xfer-back').onclick = () => openPackageDetail(pkg.id);
+    $('#pkg-xfer-go').onclick = () => {
+      const destId = $('#pkg-xfer-team').value;
+      const destTm = teamById(destId);
+      if (!destTm) return;
+      const prevLabel = pkgTeamLabel(pkg.teamId);
+      const destLabel = pkgTeamLabel(destId);
+      const extraNote = $('#pkg-xfer-note').value.trim();
+      const now = Date.now();
+      pkg.teamId = destId;
+      if (destTm.supervisorId) pkg.supervisorId = destTm.supervisorId;
+      pkg.updatedAt = now;
+      if (!Array.isArray(pkg.notes)) pkg.notes = [];
+      pkg.notes.unshift({
+        id: pkgUid('n'),
+        type: 'transfer',
+        text: `Transferred from ${prevLabel} to ${destLabel}${extraNote ? ` — "${extraNote}"` : ''}`,
+        author: pkgActorName(),
+        authorUid: Cloud.user?.uid || '',
+        ts: now
+      });
+      syncPackageToCloud(pkg);
+      save();
+      render();
+      toast(`Package transferred to ${destLabel}`);
+      openPackageDetail(pkg.id);
+    };
+  }
+
+  function openPackageDetail(pkgId) {
+    const pkg = S.packages.find((p) => p.id === pkgId);
+    if (!pkg) return;
+    if (!Array.isArray(pkg.checklist)) pkg.checklist = [];
+    if (!Array.isArray(pkg.notes)) pkg.notes = [];
+
+    const xferTargets = transferableTeamsForPackage(pkg);
+    const doneCnt = pkg.checklist.filter((c) => c.done).length;
+    const stockChoices = S.items.slice().sort((a, b) => a.name.localeCompare(b.name));
+
+    const checklistHtml = pkg.checklist.length
+      ? pkg.checklist.map((c) => `
+          <div class="pkg-check-row ${c.done ? 'is-done' : ''}">
+            <button type="button" class="pkg-check-toggle" data-pkg-chk="${esc(c.id)}" aria-pressed="${Boolean(c.done)}" aria-label="Toggle ${esc(c.name)}">
+              <span class="pkg-checkbox">${c.done ? ICON.check : ''}</span>
+              <span class="pkg-check-copy">
+                <span class="pkg-check-name">${esc(c.name)}</span>
+                ${c.spec ? `<span class="pkg-check-spec">${esc(c.spec)}</span>` : ''}
+              </span>
+            </button>
+            <span class="pkg-check-qty">${c.qtyNeeded} ${esc(c.unit || 'ea')}</span>
+            <button type="button" class="pkg-check-del" data-pkg-chk-del="${esc(c.id)}" aria-label="Remove ${esc(c.name)}">×</button>
+          </div>`).join('')
+      : `<div class="empty-note" style="padding:10px 0">No materials added yet. Add the materials needed to sell off this package below.</div>`;
+
+    const historyHtml = pkg.notes.length
+      ? pkg.notes.map((n) => `
+          <div class="pkg-hist-item is-${esc(n.type || 'note')}">
+            <div class="pkg-hist-text">${esc(n.text)}</div>
+            <div class="pkg-hist-meta">
+              <span>${esc(n.author || 'User')}</span>
+              <span>${esc(fmtDateTime(n.ts))}</span>
+            </div>
+          </div>`).join('')
+      : `<div class="empty-note" style="padding:8px 0">No notes or history yet.</div>`;
+
+    openSheet(pkg.name, `
+      <div class="pkg-detail-meta">
+        ${pkg.jobNumber ? `<span class="bin-tag">${esc(pkg.jobNumber)}</span>` : ''}
+        <span class="crew-tag">${esc(pkgTeamLabel(pkg.teamId))}</span>
+        ${xferTargets.length ? `<button type="button" class="pkg-inline-xfer" id="pkgDetailXferBtn">${ICON.xfer}<span>Transfer Crew</span></button>` : ''}
+      </div>
+
+      <div class="pkg-section">
+        <div class="pkg-section-head"><span>Status</span></div>
+        <div class="pkg-seg-status" role="group" aria-label="Package status">
+          ${['pending', 'in_progress', 'completed'].map((st) => `
+            <button type="button" class="pkg-seg-btn is-${st} ${pkg.status === st ? 'is-active' : ''}" data-set-pkg-st="${st}" aria-pressed="${pkg.status === st}">
+              ${PKG_STATUS_META[st].label}
+            </button>`).join('')}
+        </div>
+      </div>
+
+      <div class="pkg-section">
+        <div class="pkg-section-head">
+          <span>Materials Checklist</span>
+          <span class="pkg-section-count">${doneCnt}/${pkg.checklist.length} ready</span>
+        </div>
+        <div class="pkg-checklist">${checklistHtml}</div>
+        <div class="pkg-add-mat">
+          ${stockChoices.length ? `
+            <select id="pkg-mat-pick" aria-label="Pick from existing stock">
+              <option value="">Pick from stock (optional)…</option>
+              ${stockChoices.map((it) => `<option value="${esc(it.id)}">${esc(it.name)}${it.size ? ` · ${esc(it.size)}` : ''} (${it.qty} ${esc(it.unit || 'ea')})</option>`).join('')}
+            </select>` : ''}
+          <div class="pkg-add-mat-row">
+            <input id="pkg-mat-name" type="text" placeholder="Material &amp; size (e.g. 4&quot; Green Gasket)">
+            <input id="pkg-mat-qty" type="number" min="1" step="1" value="1" inputmode="numeric" aria-label="Quantity needed">
+            <button type="button" class="btn btn-primary pkg-add-mat-btn" id="pkg-mat-add">Add</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="pkg-section">
+        <div class="pkg-section-head">
+          <span>Notes &amp; History</span>
+          <span class="pkg-section-count">${pkg.notes.length}</span>
+        </div>
+        <div class="pkg-note-form">
+          <input id="pkg-note-input" type="text" placeholder="Add a note for this package…">
+          <button type="button" class="btn btn-primary pkg-note-btn" id="pkg-note-post">Post</button>
+        </div>
+        <div class="pkg-history-list">${historyHtml}</div>
+      </div>
+    `,
+    `<button type="button" class="btn" style="flex:1" id="pkg-edit-info">Edit / Delete</button>
+     <button type="button" class="btn btn-primary" style="flex:1" id="pkg-done">Done</button>`);
+
+    $('#pkg-done').onclick = closeSheet;
+    $('#pkg-edit-info').onclick = () => openPackageEditor(pkg.id);
+    if ($('#pkgDetailXferBtn')) {
+      $('#pkgDetailXferBtn').onclick = () => openPackageTransfer(pkg.id);
+    }
+
+    // Status switcher
+    document.querySelectorAll('[data-set-pkg-st]').forEach((btn) => {
+      btn.onclick = () => {
+        const next = btn.dataset.setPkgSt;
+        if (!next || pkg.status === next) return;
+        pkg.status = next;
+        pkg.updatedAt = Date.now();
+        pkg.notes.unshift({
+          id: pkgUid('n'),
+          type: 'status',
+          text: `Status changed to ${PKG_STATUS_META[next]?.label || next}`,
+          author: pkgActorName(),
+          authorUid: Cloud.user?.uid || '',
+          ts: pkg.updatedAt
+        });
+        syncPackageToCloud(pkg);
+        save();
+        render();
+        openPackageDetail(pkg.id);
+      };
+    });
+
+    // Toggle checklist item
+    document.querySelectorAll('[data-pkg-chk]').forEach((btn) => {
+      btn.onclick = () => {
+        const cid = btn.dataset.pkgChk;
+        const entry = pkg.checklist.find((c) => c.id === cid);
+        if (!entry) return;
+        entry.done = !entry.done;
+        pkg.updatedAt = Date.now();
+        syncPackageToCloud(pkg);
+        save();
+        render();
+        openPackageDetail(pkg.id);
+      };
+    });
+
+    // Remove checklist item
+    document.querySelectorAll('[data-pkg-chk-del]').forEach((btn) => {
+      btn.onclick = () => {
+        const cid = btn.dataset.pkgChkDel;
+        pkg.checklist = pkg.checklist.filter((c) => c.id !== cid);
+        pkg.updatedAt = Date.now();
+        syncPackageToCloud(pkg);
+        save();
+        render();
+        openPackageDetail(pkg.id);
+      };
+    });
+
+    // Pick from stock auto-fill
+    if ($('#pkg-mat-pick')) {
+      $('#pkg-mat-pick').onchange = () => {
+        const id = $('#pkg-mat-pick').value;
+        const it = S.items.find((x) => x.id === id);
+        if (!it) return;
+        $('#pkg-mat-name').value = it.size ? `${it.name} (${it.size})` : it.name;
+        $('#pkg-mat-qty').focus();
+      };
+    }
+
+    // Add material to checklist
+    const addMat = () => {
+      const rawName = $('#pkg-mat-name').value.trim();
+      const qtyNeeded = Math.max(1, parseInt($('#pkg-mat-qty').value, 10) || 1);
+      if (!rawName) { $('#pkg-mat-name').focus(); return; }
+      const pickedId = $('#pkg-mat-pick') ? $('#pkg-mat-pick').value : '';
+      const picked = pickedId ? S.items.find((x) => x.id === pickedId) : null;
+      const now = Date.now();
+      pkg.checklist.push({
+        id: pkgUid('c'),
+        name: rawName,
+        spec: picked ? [picked.material, picked.type].filter(Boolean).join(' · ') : '',
+        qtyNeeded,
+        unit: picked?.unit || 'ea',
+        itemId: picked?.id || '',
+        done: false
+      });
+      pkg.updatedAt = now;
+      pkg.notes.unshift({
+        id: pkgUid('n'),
+        type: 'checklist',
+        text: `Added material: ${rawName} (×${qtyNeeded} ${picked?.unit || 'ea'})`,
+        author: pkgActorName(),
+        authorUid: Cloud.user?.uid || '',
+        ts: now
+      });
+      syncPackageToCloud(pkg);
+      save();
+      render();
+      openPackageDetail(pkg.id);
+    };
+    $('#pkg-mat-add').onclick = addMat;
+    $('#pkg-mat-name').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); addMat(); } };
+
+    // Post note
+    const postNote = () => {
+      const text = $('#pkg-note-input').value.trim();
+      if (!text) { $('#pkg-note-input').focus(); return; }
+      const now = Date.now();
+      pkg.notes.unshift({
+        id: pkgUid('n'),
+        type: 'note',
+        text,
+        author: pkgActorName(),
+        authorUid: Cloud.user?.uid || '',
+        ts: now
+      });
+      pkg.updatedAt = now;
+      syncPackageToCloud(pkg);
+      save();
+      render();
+      openPackageDetail(pkg.id);
+    };
+    $('#pkg-note-post').onclick = postNote;
+    $('#pkg-note-input').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); postNote(); } };
+  }
+
   function renderActivity() {
     const ids = new Set(activeScopeConexIds());
     const scoped = S.activeConex === 'all'
       ? S.log
       : S.log.filter((l) => ids.has(l.conexId) || ids.has(l.toConexId));
 
+    const backBar = `
+      <div class="act-back-bar">
+        <button type="button" class="btn btn-outline act-back-btn" id="backToToolsBtn">${ICON.back}<span>Back to Tools &amp; Settings</span></button>
+      </div>`;
+
     const filterBar = `
+      ${backBar}
       <div class="status-bar">
         <div class="status-filters" role="group" aria-label="Filter activity">
           ${[
@@ -833,7 +1481,7 @@
     });
 
     if (!entries.length) {
-      $('#v-activity').innerHTML = `${scoped.length ? filterBar : ''}
+      $('#v-activity').innerHTML = `${scoped.length ? filterBar : backBar}
         <div class="empty-state">
           <div class="empty-icon">${ICON.clock}</div>
           <h3>${scoped.length ? 'No matching activity' : 'No activity logged yet'}</h3>
@@ -1024,15 +1672,28 @@
             </button>` : ''}
         </div>`;
 
+    const actScopeIds = new Set(activeScopeConexIds());
+    const actCount = S.activeConex === 'all'
+      ? S.log.length
+      : S.log.filter((l) => actScopeIds.has(l.conexId) || actScopeIds.has(l.toConexId)).length;
+
     $('#v-tools').innerHTML = `
       <div class="tools-grid">
         <div class="panel">
-          <h2 class="panel-title">${isMainAdmin() ? 'Cloud Sync &amp; Accounts (Firebase Spark)' : 'Accounts'}</h2>
+          <h2 class="panel-title">${isMainAdmin() ? 'Cloud Sync, Accounts &amp; Activities' : 'Accounts &amp; Activities'}</h2>
           <button type="button" class="list-item" id="cloudPrimaryBtn">
             <span class="li-icon">${accountIcon}</span>
             <span class="li-text">
               <span class="li-label"><strong>${cloudTitle}</strong></span>
               <span class="li-desc">${cloudDesc}</span>
+            </span>
+            <span class="li-chev">${ICON.chev}</span>
+          </button>
+          <button type="button" class="list-item" id="toolsActivityBtn">
+            <span class="li-icon">${ICON.activity}</span>
+            <span class="li-text">
+              <span class="li-label">Activity Log</span>
+              <span class="li-desc">${actCount} recorded stock &amp; transfer update${actCount === 1 ? '' : 's'}</span>
             </span>
             <span class="li-chev">${ICON.chev}</span>
           </button>
@@ -2881,7 +3542,7 @@
 
   // ---------- Event Delegation ----------
   document.addEventListener('click', (e) => {
-    const t = e.target.closest('button,[data-edit]');
+    const t = e.target.closest('button,[data-edit],[data-open-pkg]');
     if (!t) return;
 
     if (t.dataset.v) { view = t.dataset.v; render(); window.scrollTo({ top: 0, behavior: 'instant' }); return; }
@@ -2892,6 +3553,8 @@
       return;
     }
     if (t.dataset.st) { statusFilter = t.dataset.st; renderStock(); return; }
+    if (t.dataset.pkgSt) { pkgStatusFilter = t.dataset.pkgSt; renderStatus(); return; }
+    if (t.dataset.openPkg) { openPackageDetail(t.dataset.openPkg); return; }
     if (t.dataset.af) { actFilter = t.dataset.af; renderActivity(); return; }
     if (t.dataset.unlockTeam) { openUnlockTeam(t.dataset.unlockTeam); return; }
     if (t.dataset.adj) {
@@ -2944,6 +3607,25 @@
         if (!Cloud.configured) openFirebaseSetup();
         else openAuthSheet();
         break;
+      case 'toolsActivityBtn':
+        view = 'activity';
+        render();
+        window.scrollTo({ top: 0, behavior: 'instant' });
+        break;
+      case 'backToToolsBtn':
+        view = 'tools';
+        render();
+        window.scrollTo({ top: 0, behavior: 'instant' });
+        break;
+      case 'newPkgBtn':
+      case 'emptyNewPkgBtn':
+        openPackageEditor(null);
+        break;
+      case 'clearPkgFiltersBtn':
+        pkgQuery = '';
+        pkgStatusFilter = 'all';
+        renderStatus();
+        break;
       case 'superViewBtn':
       case 'toolsSuperViewBtn': openSuperView(); break;
       case 'toolsThemeBtn':
@@ -2969,6 +3651,9 @@
       case 'restoreLibBtn': openRestoreDefaultPhotos(); break;
       case 'fab':
       case 'desktopAddBtn':
+        if (view === 'status') openPackageEditor(null);
+        else openEdit(null);
+        break;
       case 'emptyAddBtn':
         openEdit(null);
         break;
@@ -3013,6 +3698,18 @@
   });
 
   $('#q').oninput = (e) => { query = e.target.value; renderStock(); };
+  document.addEventListener('input', (e) => {
+    if (e.target && e.target.id === 'pkgSearch') {
+      pkgQuery = e.target.value;
+      const pos = e.target.selectionStart;
+      renderStatus();
+      const el = $('#pkgSearch');
+      if (el) {
+        el.focus();
+        try { el.setSelectionRange(pos, pos); } catch (_) {}
+      }
+    }
+  });
   $('#qClear').onclick = () => { query = ''; $('#q').value = ''; renderStock(); $('#q').focus(); };
   $('#themeBtn').onclick = () => {
     const cur = document.documentElement.dataset.theme;
@@ -3817,6 +4514,7 @@
         if (patch.hasRemoteTeams && Array.isArray(patch.teams)) S.teams = patch.teams;
         if (patch.hasRemoteConexes && Array.isArray(patch.conexes)) S.conexes = patch.conexes;
         if (patch.hasRemoteItems && Array.isArray(patch.items)) S.items = patch.items;
+        if (patch.hasRemotePackages && Array.isArray(patch.packages)) S.packages = patch.packages;
         if (Array.isArray(patch.logs)) S.log = patch.logs;
         save();
         render();

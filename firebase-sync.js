@@ -305,6 +305,44 @@
           this.onStateChange();
         })
       );
+
+      if (admin || this.isSupervisor()) {
+        const pkgsQ = admin
+          ? this.db.collection('packages')
+          : this.db.collection('packages').where('supervisorId', '==', supId || '__none__');
+        this.unsubs.push(
+          pkgsQ.onSnapshot((snap) => {
+            const packages = [];
+            snap.forEach((d) => packages.push({ id: d.id, ...d.data() }));
+            packages.sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
+            this.onRemoteData({ packages, hasRemotePackages: true });
+          }, (err) => console.warn('[PipefitterCloud] packages listener:', err && err.code))
+        );
+      } else {
+        const pkgMapTeam = new Map();
+        const pkgMapMine = new Map();
+        const emitCrewPkgs = () => {
+          const merged = new Map([...pkgMapTeam, ...pkgMapMine]);
+          const packages = Array.from(merged.values());
+          packages.sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
+          this.onRemoteData({ packages, hasRemotePackages: true });
+        };
+        const teamId = this.profile.teamId || '__none__';
+        this.unsubs.push(
+          this.db.collection('packages').where('teamId', '==', teamId).onSnapshot((snap) => {
+            pkgMapTeam.clear();
+            snap.forEach((d) => pkgMapTeam.set(d.id, { id: d.id, ...d.data() }));
+            emitCrewPkgs();
+          }, (err) => console.warn('[PipefitterCloud] crew team packages:', err && err.code))
+        );
+        this.unsubs.push(
+          this.db.collection('packages').where('createdByUid', '==', this.user.uid).onSnapshot((snap) => {
+            pkgMapMine.clear();
+            snap.forEach((d) => pkgMapMine.set(d.id, { id: d.id, ...d.data() }));
+            emitCrewPkgs();
+          }, (err) => console.warn('[PipefitterCloud] crew own packages:', err && err.code))
+        );
+      }
     },
 
     async pushMeta(photoLibrary) {
@@ -371,6 +409,20 @@
       if (!this.ready || !this.user) return;
       const id = 'log_' + (logEntry.ts || Date.now()) + '_' + Math.random().toString(36).slice(2, 6);
       await this.db.collection('logs').doc(id).set(logEntry);
+    },
+
+    async pushPackage(pkg) {
+      if (!this.ready || !this.user || !pkg || !pkg.id) return;
+      const clean = {};
+      Object.keys(pkg).forEach((k) => {
+        if (pkg[k] !== undefined) clean[k] = pkg[k];
+      });
+      await this.db.collection('packages').doc(clean.id).set(clean, { merge: true });
+    },
+
+    async deletePackage(pkgId) {
+      if (!this.ready || !this.user || !pkgId) return;
+      await this.db.collection('packages').doc(pkgId).delete();
     },
 
     async updateUserProfile(uid, patch) {

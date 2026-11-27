@@ -17,8 +17,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./base.css?v=46">
-  <link rel="stylesheet" href="./style.css?v=46">
+  <link rel="stylesheet" href="./base.css?v=47">
+  <link rel="stylesheet" href="./style.css?v=47">
 </head>
 <body>
   <div id="authGate" class="auth-gate hidden" role="dialog" aria-modal="true" aria-label="Sign in">
@@ -55,7 +55,7 @@
         <nav class="desktop-nav" aria-label="Primary navigation">
           <button type="button" data-v="stock" class="is-active" aria-current="page">Stock</button>
           <button type="button" data-v="reorder">Reorder <span class="nav-badge hidden" id="roDotDesktop">0</span></button>
-          <button type="button" data-v="activity">Activity</button>
+          <button type="button" data-v="status">Status</button>
           <button type="button" data-v="tools">Tools</button>
         </nav>
 
@@ -105,6 +105,7 @@
       </section>
 
       <section id="v-reorder" class="view-section hidden" aria-label="Reorder list"></section>
+      <section id="v-status" class="view-section hidden" aria-label="Package status"></section>
       <section id="v-activity" class="view-section hidden" aria-label="Inventory activity"></section>
       <section id="v-tools" class="view-section hidden" aria-label="Tools and settings"></section>
     </main>
@@ -125,9 +126,9 @@
       <button type="button" class="dock-add" id="fab" aria-label="Add new item" title="Add item">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
       </button>
-      <button type="button" class="dock-tab" data-v="activity">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-7.5L14 19.5l3-7.5h4"/></svg>
-        <span>Activity</span>
+      <button type="button" class="dock-tab" data-v="status">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 14l2 2 4-4"/></svg>
+        <span>Status</span>
       </button>
       <button type="button" class="dock-tab" data-v="tools">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
@@ -158,8 +159,8 @@
   <input type="file" id="photoIn" accept="image/*" class="hidden" aria-hidden="true">
   <input type="file" id="libPhotoIn" accept="image/*" class="hidden" aria-hidden="true">
 
-  <script src="./firebase-config.js?v=46" defer></script>
-  <script src="./firebase-sync.js?v=46" defer></script>
-  <script src="./app.js?v=46" defer></script>
+  <script src="./firebase-config.js?v=47" defer></script>
+  <script src="./firebase-sync.js?v=47" defer></script>
+  <script src="./app.js?v=47" defer></script>
 </body>
 </html>
