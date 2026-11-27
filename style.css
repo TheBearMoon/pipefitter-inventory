@@ -3769,6 +3769,55 @@ button.list-item:active {
   min-width: 84px;
 }
 
+/* Sold status (Supervisors & Admins) */
+.st-dot.sold {
+  background: #7c3aed;
+}
+
+.pkg-status-pill.is-sold {
+  background: rgba(124, 58, 237, 0.14);
+  color: #6d28d9;
+  border: 1px solid rgba(124, 58, 237, 0.35);
+}
+
+[data-theme="dark"] .pkg-status-pill.is-sold {
+  color: #c4b5fd;
+}
+
+.pkg-progress-fill.is-sold {
+  background: #7c3aed;
+}
+
+.pkg-seg-status.is-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.pkg-seg-btn.is-sold.is-active {
+  background: rgba(124, 58, 237, 0.16);
+  color: #6d28d9;
+  border-color: rgba(124, 58, 237, 0.45);
+}
+
+[data-theme="dark"] .pkg-seg-btn.is-sold.is-active {
+  color: #c4b5fd;
+}
+
+.pkg-sold-banner {
+  background: rgba(124, 58, 237, 0.1);
+  border: 1px solid rgba(124, 58, 237, 0.3);
+  color: #6d28d9;
+  border-radius: var(--radius-md);
+  padding: 9px 11px;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  margin-bottom: 12px;
+}
+
+[data-theme="dark"] .pkg-sold-banner {
+  color: #c4b5fd;
+}
+
 
 
 

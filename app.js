@@ -825,7 +825,8 @@
   const PKG_STATUS_META = {
     pending: { label: 'Pending', cls: 'pending' },
     in_progress: { label: 'In Progress', cls: 'in_progress' },
-    completed: { label: 'Completed', cls: 'completed' }
+    completed: { label: 'Completed', cls: 'completed' },
+    sold: { label: 'Sold', cls: 'sold' }
   };
 
   function pkgUid(prefix) {
@@ -908,6 +909,7 @@
     const cntPending = base.filter((p) => p.status === 'pending').length;
     const cntProgress = base.filter((p) => p.status === 'in_progress').length;
     const cntDone = base.filter((p) => p.status === 'completed').length;
+    const cntSold = base.filter((p) => p.status === 'sold').length;
 
     const q = pkgQuery.trim().toLowerCase();
     const filtered = base.filter((p) => {
@@ -938,7 +940,8 @@
               ['all', 'All', base.length, ''],
               ['pending', 'Pending', cntPending, 'low'],
               ['in_progress', 'In Progress', cntProgress, 'prog'],
-              ['completed', 'Completed', cntDone, 'ok']
+              ['completed', 'Completed', cntDone, 'ok'],
+              ['sold', 'Sold', cntSold, 'sold']
             ].map(([k, lbl, num, dot]) => `
               <button type="button" class="status-chip ${pkgStatusFilter === k ? 'is-active' : ''}" data-pkg-st="${k}" aria-pressed="${pkgStatusFilter === k}">
                 ${dot ? `<span class="st-dot ${dot}" aria-hidden="true"></span>` : ''}${lbl} <span class="st-num">${num}</span>
@@ -975,7 +978,7 @@
       const weldDone = welds.filter((w) => w.done).length;
       const progTotal = boltUps.length + welds.length;
       const progDone = boltDone + weldDone;
-      const pct = progTotal ? Math.round((progDone / progTotal) * 100) : (p.status === 'completed' ? 100 : 0);
+      const pct = progTotal ? Math.round((progDone / progTotal) * 100) : ((p.status === 'completed' || p.status === 'sold') ? 100 : 0);
       const progLabel = progTotal
         ? (boltUps.length && welds.length
             ? `${progDone} of ${progTotal} bolt-up & weld tasks done`
@@ -1038,6 +1041,10 @@
 
   function openPackageEditor(pkgId) {
     const existing = pkgId ? S.packages.find((p) => p.id === pkgId) : null;
+    if (existing && existing.status === 'sold' && !canManageYard()) {
+      toast('Sold packages can only be edited by a Supervisor or Admin');
+      return;
+    }
     const teams = teamsInPackageScope();
     const defaultTeamId = existing
       ? existing.teamId
@@ -1060,6 +1067,7 @@
           <option value="pending" ${(!existing || existing.status === 'pending') ? 'selected' : ''}>Pending</option>
           <option value="in_progress" ${existing?.status === 'in_progress' ? 'selected' : ''}>In Progress</option>
           <option value="completed" ${existing?.status === 'completed' ? 'selected' : ''}>Completed</option>
+          ${canManageYard() ? `<option value="sold" ${existing?.status === 'sold' ? 'selected' : ''}>Sold</option>` : ''}
         </select>
       </div>
       ${canPickTeam ? `
@@ -1301,6 +1309,11 @@
     if (!Array.isArray(pkg.notes)) pkg.notes = [];
 
     const xferTargets = transferableTeamsForPackage(pkg);
+    const isSoldLocked = pkg.status === 'sold' && !canManageYard();
+    const canMarkSold = canManageYard();
+    const statusChoices = canMarkSold
+      ? ['pending', 'in_progress', 'completed', 'sold']
+      : (pkg.status === 'sold' ? ['pending', 'in_progress', 'completed', 'sold'] : ['pending', 'in_progress', 'completed']);
     const doneCnt = pkg.checklist.filter((c) => c.done).length;
     const boltDoneCnt = pkg.boltUps.filter((b) => b.status === 'tightened').length;
     const weldDoneCnt = pkg.welds.filter((w) => w.done).length;
@@ -1309,7 +1322,7 @@
     const checklistHtml = pkg.checklist.length
       ? pkg.checklist.map((c) => `
           <div class="pkg-check-row ${c.done ? 'is-done' : ''}">
-            <button type="button" class="pkg-check-toggle" data-pkg-chk="${esc(c.id)}" aria-pressed="${Boolean(c.done)}" aria-label="Toggle ${esc(c.name)}">
+            <button type="button" class="pkg-check-toggle" data-pkg-chk="${esc(c.id)}" aria-pressed="${Boolean(c.done)}" aria-label="Toggle ${esc(c.name)}" ${isSoldLocked ? 'disabled' : ''}>
               <span class="pkg-checkbox">${c.done ? ICON.check : ''}</span>
               <span class="pkg-check-copy">
                 <span class="pkg-check-name">${esc(c.name)}</span>
@@ -1317,7 +1330,7 @@
               </span>
             </button>
             <span class="pkg-check-qty">${c.qtyNeeded} ${esc(c.unit || 'ea')}</span>
-            <button type="button" class="pkg-check-del" data-pkg-chk-del="${esc(c.id)}" aria-label="Remove ${esc(c.name)}">×</button>
+            ${isSoldLocked ? '' : `<button type="button" class="pkg-check-del" data-pkg-chk-del="${esc(c.id)}" aria-label="Remove ${esc(c.name)}">×</button>`}
           </div>`).join('')
       : `<div class="empty-note" style="padding:10px 0">No materials added yet. Add the materials needed to sell off this package below.</div>`;
 
@@ -1327,12 +1340,12 @@
           return `
             <div class="pkg-bolt-row is-${st}">
               <span class="pkg-bolt-name">${esc(b.name)}</span>
-              <select class="pkg-bolt-select is-${st}" data-pkg-bolt-st="${esc(b.id)}" aria-label="Status for ${esc(b.name)}">
+              <select class="pkg-bolt-select is-${st}" data-pkg-bolt-st="${esc(b.id)}" aria-label="Status for ${esc(b.name)}" ${isSoldLocked ? 'disabled' : ''}>
                 <option value="untouched" ${st === 'untouched' ? 'selected' : ''}>Untouched</option>
                 <option value="ready" ${st === 'ready' ? 'selected' : ''}>Ready for tightening</option>
                 <option value="tightened" ${st === 'tightened' ? 'selected' : ''}>Tightened</option>
               </select>
-              <button type="button" class="pkg-check-del" data-pkg-bolt-del="${esc(b.id)}" aria-label="Remove ${esc(b.name)}">×</button>
+              ${isSoldLocked ? '' : `<button type="button" class="pkg-check-del" data-pkg-bolt-del="${esc(b.id)}" aria-label="Remove ${esc(b.name)}">×</button>`}
             </div>`;
         }).join('')
       : `<div class="empty-note" style="padding:8px 0">Optional — add bolt-up jobs for this package below.</div>`;
@@ -1340,19 +1353,19 @@
     const weldsHtml = pkg.welds.length
       ? pkg.welds.map((w) => `
           <div class="pkg-check-row ${w.done ? 'is-done' : ''}">
-            <button type="button" class="pkg-check-toggle" data-pkg-weld-chk="${esc(w.id)}" aria-pressed="${Boolean(w.done)}" aria-label="Toggle weld ${esc(w.jobNumber)}">
+            <button type="button" class="pkg-check-toggle" data-pkg-weld-chk="${esc(w.id)}" aria-pressed="${Boolean(w.done)}" aria-label="Toggle weld ${esc(w.jobNumber)}" ${isSoldLocked ? 'disabled' : ''}>
               <span class="pkg-checkbox">${w.done ? ICON.check : ''}</span>
               <span class="pkg-check-copy">
                 <span class="pkg-check-name pkg-weld-num">${esc(w.jobNumber)}</span>
               </span>
             </button>
-            <button type="button" class="pkg-check-del" data-pkg-weld-del="${esc(w.id)}" aria-label="Remove weld ${esc(w.jobNumber)}">×</button>
+            ${isSoldLocked ? '' : `<button type="button" class="pkg-check-del" data-pkg-weld-del="${esc(w.id)}" aria-label="Remove weld ${esc(w.jobNumber)}">×</button>`}
           </div>`).join('')
       : `<div class="empty-note" style="padding:8px 0">Optional — add weld job numbers below and check them off when completed.</div>`;
 
     const historyHtml = pkg.notes.length
       ? pkg.notes.map((n) => {
-          const editable = canEditPackageNote(n);
+          const editable = !isSoldLocked && canEditPackageNote(n);
           if (editingNoteId && n.id === editingNoteId && editable) {
             return `
               <div class="pkg-hist-item is-note is-editing">
@@ -1380,17 +1393,18 @@
       : `<div class="empty-note" style="padding:8px 0">No notes or history yet.</div>`;
 
     openSheet(pkg.name, `
+      ${isSoldLocked ? `<div class="pkg-sold-banner">Sold — locked for crew. Only a Supervisor or Admin can undo Sold status or edit this package.</div>` : ''}
       <div class="pkg-detail-meta">
         ${pkg.jobNumber ? `<span class="bin-tag">${esc(pkg.jobNumber)}</span>` : ''}
         <span class="crew-tag">${esc(pkgTeamLabel(pkg.teamId))}</span>
-        ${xferTargets.length ? `<button type="button" class="pkg-inline-xfer" id="pkgDetailXferBtn">${ICON.xfer}<span>Transfer Crew</span></button>` : ''}
+        ${(!isSoldLocked && xferTargets.length) ? `<button type="button" class="pkg-inline-xfer" id="pkgDetailXferBtn">${ICON.xfer}<span>Transfer Crew</span></button>` : ''}
       </div>
 
       <div class="pkg-section">
         <div class="pkg-section-head"><span>Status</span></div>
-        <div class="pkg-seg-status" role="group" aria-label="Package status">
-          ${['pending', 'in_progress', 'completed'].map((st) => `
-            <button type="button" class="pkg-seg-btn is-${st} ${pkg.status === st ? 'is-active' : ''}" data-set-pkg-st="${st}" aria-pressed="${pkg.status === st}">
+        <div class="pkg-seg-status ${statusChoices.length === 4 ? 'is-4' : ''}" role="group" aria-label="Package status">
+          ${statusChoices.map((st) => `
+            <button type="button" class="pkg-seg-btn is-${st} ${pkg.status === st ? 'is-active' : ''}" data-set-pkg-st="${st}" aria-pressed="${pkg.status === st}" ${isSoldLocked ? 'disabled' : ''}>
               ${PKG_STATUS_META[st].label}
             </button>`).join('')}
         </div>
@@ -1402,6 +1416,7 @@
           <span class="pkg-section-count">${doneCnt}/${pkg.checklist.length} ready</span>
         </div>
         <div class="pkg-checklist">${checklistHtml}</div>
+        ${isSoldLocked ? '' : `
         <div class="pkg-add-mat">
           ${stockChoices.length ? `
             <select id="pkg-mat-pick" aria-label="Pick from existing stock">
@@ -1413,7 +1428,7 @@
             <input id="pkg-mat-qty" type="number" min="1" step="1" value="1" inputmode="numeric" aria-label="Quantity needed">
             <button type="button" class="btn btn-primary pkg-add-mat-btn" id="pkg-mat-add">Add</button>
           </div>
-        </div>
+        </div>`}
       </div>
 
       <div class="pkg-section">
@@ -1422,10 +1437,11 @@
           <span class="pkg-section-count">${pkg.boltUps.length ? `${boltDoneCnt}/${pkg.boltUps.length} tightened` : '0'}</span>
         </div>
         <div class="pkg-checklist">${boltUpsHtml}</div>
+        ${isSoldLocked ? '' : `
         <div class="pkg-add-sub-row">
           <input id="pkg-bolt-name" type="text" placeholder="Bolt-up job (e.g. Flange F-12 / Joint 4)">
           <button type="button" class="btn btn-primary pkg-add-mat-btn" id="pkg-bolt-add">Add</button>
-        </div>
+        </div>`}
       </div>
 
       <div class="pkg-section">
@@ -1434,10 +1450,11 @@
           <span class="pkg-section-count">${pkg.welds.length ? `${weldDoneCnt}/${pkg.welds.length} done` : '0'}</span>
         </div>
         <div class="pkg-checklist">${weldsHtml}</div>
+        ${isSoldLocked ? '' : `
         <div class="pkg-add-sub-row">
           <input id="pkg-weld-num" type="text" placeholder="Weld job # (e.g. W-104 or FW-12)">
           <button type="button" class="btn btn-primary pkg-add-mat-btn" id="pkg-weld-add">Add</button>
-        </div>
+        </div>`}
       </div>
 
       <div class="pkg-section">
@@ -1445,29 +1462,37 @@
           <span>Notes &amp; History</span>
           <span class="pkg-section-count">${pkg.notes.length}</span>
         </div>
+        ${isSoldLocked ? '' : `
         <div class="pkg-note-form">
           <textarea id="pkg-note-input" rows="3" placeholder="Add a note for this package…"></textarea>
           <div class="pkg-note-form-actions">
             <button type="button" class="btn btn-primary pkg-note-btn" id="pkg-note-post">Post</button>
           </div>
-        </div>
+        </div>`}
         <div class="pkg-history-list">${historyHtml}</div>
       </div>
     `,
-    `<button type="button" class="btn" style="flex:1" id="pkg-edit-info">Edit / Delete</button>
-     <button type="button" class="btn btn-primary" style="flex:1" id="pkg-done">Done</button>`);
+    isSoldLocked
+      ? `<button type="button" class="btn btn-primary" style="flex:1" id="pkg-done">Done</button>`
+      : `<button type="button" class="btn" style="flex:1" id="pkg-edit-info">Edit / Delete</button>
+         <button type="button" class="btn btn-primary" style="flex:1" id="pkg-done">Done</button>`);
 
     $('#pkg-done').onclick = closeSheet;
-    $('#pkg-edit-info').onclick = () => openPackageEditor(pkg.id);
+    if ($('#pkg-edit-info')) $('#pkg-edit-info').onclick = () => openPackageEditor(pkg.id);
     if ($('#pkgDetailXferBtn')) {
       $('#pkgDetailXferBtn').onclick = () => openPackageTransfer(pkg.id);
     }
+    if (isSoldLocked) return;
 
     // Status switcher
     document.querySelectorAll('[data-set-pkg-st]').forEach((btn) => {
       btn.onclick = () => {
         const next = btn.dataset.setPkgSt;
         if (!next || pkg.status === next) return;
+        if ((next === 'sold' || pkg.status === 'sold') && !canManageYard()) {
+          toast('Only a Supervisor or Admin can mark or undo Sold');
+          return;
+        }
         pkg.status = next;
         pkg.updatedAt = Date.now();
         pkg.notes.unshift({
