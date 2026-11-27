@@ -1429,9 +1429,14 @@
     if ($('#cx-xfer')) $('#cx-xfer').onclick = () => openWholeConexTransfer(existing.id);
     if ($('#cx-del')) {
       $('#cx-del').onclick = () => {
+        if (Cloud.user && Cloud.profile && Cloud.profile.role === 'crew') {
+          toast('Only Supervisors and Main Admin can delete a Conex box');
+          return;
+        }
         if (partCount) { toast(`Move or delete ${partCount} part${partCount > 1 ? 's' : ''} in ${existing.name} first`); return; }
         S.conexes = S.conexes.filter((c) => c.id !== existing.id);
-        if (S.activeConex === existing.id) S.activeConex = S.conexes[0].id;
+        if (S.activeConex === existing.id) S.activeConex = S.conexes[0]?.id || 'all';
+        if (Cloud.ready && Cloud.user) Cloud.deleteConex(existing.id).catch(() => {});
         save();
         closeSheet();
         render();
@@ -2608,6 +2613,8 @@
               ${S.teams.map((t) => `<option value="${esc(t.id)}" ${u.teamId === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}
             </select>` : '<div style="font-size:12px;color:var(--muted);align-self:center">Manages own teams</div>'}
         </div>
+        ${u.uid !== Cloud.user.uid ? `
+          <button type="button" class="btn btn-danger adm-del-user" data-uid="${esc(u.uid)}" data-name="${esc(u.displayName || u.username)}" style="width:100%;margin-top:8px;padding:7px 10px;font-size:12px">Delete username</button>` : ''}
       </div>
     `).join('') || '<div class="empty-note">No accounts in this group yet.</div>';
 
@@ -2629,6 +2636,30 @@
       sel.onchange = async () => {
         await Cloud.updateUserProfile(sel.dataset.uid, { teamId: sel.value });
         toast('Updated crew team');
+      };
+    });
+    document.querySelectorAll('.adm-del-user').forEach((btn) => {
+      btn.onclick = () => {
+        const uid = btn.dataset.uid;
+        const nm = btn.dataset.name || 'this user';
+        openSheet('Delete username?', `
+          <div class="info-callout">
+            <span>Remove <strong>${esc(nm)}</strong> from Pipefitter Inventory? They will immediately lose access to all teams and Conex boxes.</span>
+          </div>
+        `,
+        `<button type="button" class="btn" style="flex:1" id="du-cancel">Cancel</button>
+         <button type="button" class="btn btn-danger" style="flex:2" id="du-ok">Delete username</button>`);
+        $('#du-cancel').onclick = () => { closeSheet(); openAdminPanel(); };
+        $('#du-ok').onclick = async () => {
+          try {
+            await Cloud.deleteUserProfile(uid);
+            closeSheet();
+            toast(`Deleted ${nm}`);
+            openAdminPanel();
+          } catch (err) {
+            toast(err?.message || 'Could not delete username');
+          }
+        };
       };
     });
   }

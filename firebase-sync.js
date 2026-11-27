@@ -339,6 +339,12 @@
       await this.db.collection('users').doc(uid).set(patch, { merge: true });
     },
 
+    async deleteUserProfile(uid) {
+      if (!this.isAdmin() && !this.isSupervisor()) return;
+      if (this.user && this.user.uid === uid) throw new Error('Cannot delete your own account');
+      await this.db.collection('users').doc(uid).delete();
+    },
+
     async seedCloudIfEmpty(state) {
       if (!this.isAdmin()) return;
       const metaSnap = await this.db.collection('yard').doc('meta').get();
