@@ -1542,10 +1542,10 @@
     if ($('#sd-add-conex')) {
       $('#sd-add-conex').onclick = () => openConexEditor(null, isUnassigned ? '' : supUid);
     }
-    $$('[data-sd-team]', $('#sheetBody')).forEach((btn) => {
+    $$('[data-sd-team]', $('#shBody')).forEach((btn) => {
       btn.onclick = () => openTeamEditor(btn.dataset.sdTeam);
     });
-    $$('[data-sd-conex]', $('#sheetBody')).forEach((btn) => {
+    $$('[data-sd-conex]', $('#shBody')).forEach((btn) => {
       btn.onclick = () => openConexEditor(btn.dataset.sdConex);
     });
   }
