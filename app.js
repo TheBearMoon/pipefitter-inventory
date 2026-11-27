@@ -290,6 +290,14 @@
     if (S.activeConex === 'all') return null;
     if (S.activeConex.startsWith('team:')) {
       const tid = S.activeConex.slice(5);
+      if (Cloud.user && Cloud.profile) {
+        if (Cloud.profile.role === 'admin') return null;
+        if (Cloud.profile.role === 'supervisor') {
+          const tm = teamById(tid);
+          return tm && tm.supervisorId === Cloud.user.uid ? null : tm;
+        }
+        return tid !== Cloud.profile.teamId ? teamById(tid) : null;
+      }
       return tid !== S.myTeamId && !unlockedTeams.has(tid) ? teamById(tid) : null;
     }
     const cx = conexById(S.activeConex);
@@ -1054,7 +1062,7 @@
   }
 
   function setQty(i, to, kind, note) {
-    if (!canEditConex(i.conexId)) { toast('View only — unlock team to edit'); return; }
+    if (!canEditConex(i.conexId)) { toast('View only — you can only edit your own Conex'); return; }
     to = Math.max(0, Math.round(to));
     const from = i.qty;
     if (to === from && kind !== 'set') return;
@@ -1085,7 +1093,7 @@
   }
 
   function transferPartQty(srcItem, toConexId, amount, note) {
-    if (!canEditConex(srcItem.conexId)) { toast('View only — unlock team to transfer'); return; }
+    if (!canEditConex(srcItem.conexId)) { toast('View only — you can only transfer from your own Conex'); return; }
     const qty = Math.min(srcItem.qty, Math.max(0, Math.round(amount)));
     if (qty <= 0) { toast('Enter a quantity greater than 0'); return; }
     const destCx = conexById(toConexId);
@@ -1157,8 +1165,12 @@
     if (e.key === 'Escape' && $('#sheet').classList.contains('is-open')) closeSheet();
   });
 
-  // Unlock Other Team Sheet (requires Supervisor PIN if set)
+  // Unlock Other Team Sheet (offline-only fallback; disabled when cloud accounts are active)
   function openUnlockTeam(teamId) {
+    if (Cloud.configured || (Cloud.user && Cloud.profile)) {
+      toast('View only — only your own Conex can be edited');
+      return;
+    }
     const tm = teamById(teamId);
     openSheet(`Unlock ${tm.name}`, `
       <div class="callout is-warn">
@@ -1948,10 +1960,11 @@
     if (id && src && !canEditConex(src.conexId)) {
       const cx = conexById(src.conexId);
       const tm = teamById(cx.teamId);
+      const allowLocalUnlock = !Cloud.configured && !(Cloud.user && Cloud.profile);
       openSheet('Part details (View only)', `
         <div class="callout is-warn">
           ${ICON.lock}
-          <div>This item is in <strong>${esc(cx.name)} (${esc(tm.name)})</strong> and is view-only on this phone.</div>
+          <div>This item is in <strong>${esc(cx.name)} (${esc(teamDisplayName(tm))})</strong> and is view-only.</div>
         </div>
         <div class="count-header">
           <div class="part-thumb ${src.photo ? '' : 'is-empty'}" style="width:60px;height:60px">
@@ -1972,16 +1985,18 @@
         </div>
         ${src.notes ? `<div class="field-hint">${esc(src.notes)}</div>` : ''}
       `,
-      `<button type="button" class="btn" style="flex:1" id="ro-close">Close</button>
-       <button type="button" class="btn btn-primary" style="flex:1" id="ro-unlock">Unlock ${esc(tm.name)}</button>`);
+      allowLocalUnlock
+        ? `<button type="button" class="btn" style="flex:1" id="ro-close">Close</button>
+           <button type="button" class="btn btn-primary" style="flex:1" id="ro-unlock">Unlock ${esc(teamDisplayName(tm))}</button>`
+        : `<button type="button" class="btn btn-primary" style="flex:1" id="ro-close">Close</button>`);
       $('#ro-close').onclick = closeSheet;
-      $('#ro-unlock').onclick = () => openUnlockTeam(tm.id);
+      if (allowLocalUnlock && $('#ro-unlock')) $('#ro-unlock').onclick = () => openUnlockTeam(tm.id);
       return;
     }
 
     const allowed = editableConexes();
     if (!allowed.length) {
-      toast('Switch to your team or unlock a team to add items');
+      toast('Switch to your own Conex to add items');
       return;
     }
 
