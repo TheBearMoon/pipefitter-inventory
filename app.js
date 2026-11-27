@@ -1429,9 +1429,8 @@
         : (isCrewOwn || unlockedTeams.has(t.id));
       const dispName = teamDisplayName(t);
       const hasDistinctTeam = t.name && dispName.toLowerCase() !== t.name.toLowerCase();
-      const teamHeading = hasDistinctTeam ? `${dispName} · ${t.name}` : dispName;
       const statusSuffix = isCrewOwn ? ' (My Team)' : (!canEditThisTeam ? ' · View only' : '');
-      body += `<div class="section-div" style="margin-top:var(--space-2)">${esc(teamHeading)}${statusSuffix}</div>`;
+      body += `<div class="section-div" style="margin-top:var(--space-2)">${esc(dispName)}${statusSuffix}</div>`;
 
       if (boxes.length > 1) {
         const teamItemCnt = S.items.filter((i) => boxes.some((b) => b.id === i.conexId)).length;
@@ -1439,7 +1438,7 @@
         body += `
           <button type="button" class="team-option ${active ? 'is-active' : ''}" data-pick-conex="team:${esc(t.id)}">
             <div class="team-option-copy">
-              <div class="team-option-title"><span>All ${esc(teamHeading)}</span><span class="conex-pill">${boxes.length} CONEX</span></div>
+              <div class="team-option-title"><span>All ${esc(dispName)}</span>${hasDistinctTeam ? `<span class="conex-pill">${esc(t.name)}</span>` : ''}<span class="conex-pill">${boxes.length} CONEX</span></div>
               <div class="team-option-meta">${teamItemCnt} parts across ${boxes.map((b) => b.name).join(' & ')}</div>
             </div>
             ${active ? ICON.check : ''}
