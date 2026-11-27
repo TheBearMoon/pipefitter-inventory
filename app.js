@@ -2608,7 +2608,7 @@
     if ($('#adm-new-sup')) $('#adm-new-sup').onclick = () => { closeSheet(); openCreateAccountSheet('supervisor'); };
     if ($('#adm-new-crew')) $('#adm-new-crew').onclick = () => { closeSheet(); openCreateAccountSheet('crew'); };
     if ($('#adm-xfer-team')) $('#adm-xfer-team').onclick = () => { closeSheet(); openTransferTeamSupervisorSheet(); };
-    $$('.adm-role').forEach((sel) => {
+    document.querySelectorAll('.adm-role').forEach((sel) => {
       sel.onchange = async () => {
         const patch = { role: sel.value };
         if (sel.value === 'supervisor') patch.supervisorId = sel.dataset.uid;
@@ -2616,7 +2616,7 @@
         toast('Updated account role');
       };
     });
-    $$('.adm-team').forEach((sel) => {
+    document.querySelectorAll('.adm-team').forEach((sel) => {
       sel.onchange = async () => {
         await Cloud.updateUserProfile(sel.dataset.uid, { teamId: sel.value });
         toast('Updated crew team');
