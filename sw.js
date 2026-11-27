@@ -1,12 +1,12 @@
-const CACHE = 'pipefitter-v30';
+const CACHE = 'pipefitter-v31';
 const PRECACHE = [
   './',
   './index.html',
-  './base.css',
-  './style.css',
-  './firebase-config.js',
-  './firebase-sync.js',
-  './app.js',
+  './base.css?v=31',
+  './style.css?v=31',
+  './firebase-config.js?v=31',
+  './firebase-sync.js?v=31',
+  './app.js?v=31',
   './manifest.webmanifest',
   './favicon.png',
   './apple-touch-icon.png',
@@ -27,7 +27,9 @@ const PRECACHE = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(PRECACHE))
+    caches.open(CACHE).then((cache) =>
+      Promise.all(PRECACHE.map((u) => cache.add(new Request(u, { cache: 'reload' }))))
+    )
   );
   self.skipWaiting();
 });
@@ -46,10 +48,10 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   const url = new URL(req.url);
 
-  // Network-first for same-origin app shell files so phone picks up updates fast, with instant offline fallback
+  // Network-first (revalidating HTTP cache) for same-origin app shell files so phones pick up updates immediately
   if (url.origin === self.location.origin && /\.(html|css|js|webmanifest)$|^\/?$/.test(url.pathname)) {
     event.respondWith(
-      fetch(req)
+      fetch(req, { cache: 'no-cache' })
         .then((res) => {
           if (res && res.ok) {
             const copy = res.clone();
