@@ -593,6 +593,18 @@
     items.sort(sorters[S.sort] || sorters.name);
 
     $('#sortLabel').textContent = SORT_LABELS[S.sort] || 'A–Z';
+    const isGrid = S.stockView === 'grid';
+    const vtBtn = $('#viewToggleBtn');
+    if (vtBtn) {
+      vtBtn.classList.toggle('is-active', isGrid);
+      vtBtn.setAttribute('aria-pressed', String(isGrid));
+      vtBtn.setAttribute('aria-label', isGrid ? 'Switch to list view' : 'Switch to grid view');
+      vtBtn.setAttribute('title', isGrid ? 'Switch to list view' : 'Switch to grid view');
+      vtBtn.innerHTML = isGrid
+        ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>'
+        : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>';
+    }
+    $('#list').classList.toggle('is-grid-view', isGrid);
     $('#qClear').classList.toggle('is-visible', Boolean(query));
     const lblEl = $('#listLabel');
     lblEl.textContent = q ? `${items.length} match${items.length === 1 ? '' : 'es'}` : `${items.length} shown`;
@@ -634,6 +646,48 @@
           return hasDistinct ? `${tm.name} · ${disp}` : (tm.name || disp);
         })()
       : '';
+    const canXfer = !locked && i.qty > 0 && transferTargetsForConex(i.conexId).length > 0;
+
+    if (S.stockView === 'grid') {
+      return `
+        <article class="item-card is-grid-card ${locked ? 'is-locked' : ''}" data-id="${i.id}">
+          <button type="button" class="grid-card-top" data-edit="${i.id}" aria-label="${locked ? 'View' : 'Edit'} ${esc(i.name)}">
+            <div class="grid-thumb ${i.photo ? '' : 'is-empty'}">
+              ${i.photo ? `<img src="${esc(i.photo)}" alt="${esc(i.name)}" loading="lazy" decoding="async" onerror="this.parentElement.classList.add('is-empty');this.remove()">` : ICON.box}
+              <span class="status-pill ${st}">${lbl}</span>
+            </div>
+            <div class="grid-body">
+              <h2 class="grid-name">${esc(i.name)}</h2>
+              ${(i.size || details) ? `
+                <div class="grid-spec">
+                  ${i.size ? `<span class="spec-size">${esc(i.size)}</span>` : ''}
+                  ${details ? `<span class="spec-detail">${esc(details)}</span>` : ''}
+                </div>` : ''}
+              ${(showConex || yardOwnerLabel || i.bin) ? `
+                <div class="grid-tags">
+                  ${showConex ? `<span class="conex-tag">${esc(cx.name)}</span>` : ''}
+                  ${yardOwnerLabel ? `<span class="crew-tag">${esc(yardOwnerLabel)}</span>` : ''}
+                  ${i.bin ? `<span class="bin-tag">BIN ${esc(i.bin)}</span>` : ''}
+                </div>` : ''}
+            </div>
+          </button>
+          <div class="stock-meter" aria-hidden="true">
+            <span class="stock-meter-fill ${st}" style="width:${pct}%"></span>
+          </div>
+          <div class="stepper-wrap is-grid-stepper">
+            <div class="stepper is-compact">
+              <button type="button" class="step-btn is-minus" data-adj="-1" ${locked || i.qty <= 0 ? 'disabled' : ''} aria-label="Remove 1 ${esc(i.name)}">−1</button>
+              <button type="button" class="qty-btn is-${st}" data-count="${i.id}" ${locked ? 'disabled' : ''} aria-label="${locked ? 'View-only quantity' : 'Adjust or transfer'} ${esc(i.name)}, currently ${i.qty} ${esc(i.unit || 'ea')}">
+                <span class="qty-val ${popCls}">${i.qty}</span>
+                <span class="qty-unit">${esc(i.unit || 'ea')}</span>
+              </button>
+              <button type="button" class="step-btn is-plus" data-adj="1" ${locked ? 'disabled' : ''} aria-label="Add 1 ${esc(i.name)}">+1</button>
+            </div>
+            ${canXfer ? `
+              <button type="button" class="card-xfer-btn is-compact" data-xfer="${i.id}" aria-label="Transfer ${esc(i.name)} to another crew">${ICON.xfer}<span>Transfer</span></button>` : ''}
+          </div>
+        </article>`;
+    }
 
     return `
       <article class="item-card ${locked ? 'is-locked' : ''}" data-id="${i.id}">
@@ -2926,6 +2980,11 @@
         renderStock();
         break;
       case 'sortBtn': openSortSheet(); break;
+      case 'viewToggleBtn':
+        S.stockView = S.stockView === 'grid' ? 'list' : 'grid';
+        save();
+        renderStock();
+        break;
       case 'addCat': openAddCategory(); break;
       case 'bk':
         S.lastBackup = Date.now();

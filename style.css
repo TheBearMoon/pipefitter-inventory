@@ -2759,5 +2759,187 @@ button.list-item:active {
   flex: 1;
 }
 
+/* ================================================================
+   Stock List / Grid View Toggle & 2-Column Mobile Grid
+   ================================================================ */
+.view-toggle {
+  width: 46px;
+  padding: 0;
+  justify-content: center;
+}
+
+.view-toggle.is-active {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.items-grid.is-grid-view {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+@media (min-width: 768px) {
+  .items-grid.is-grid-view {
+    grid-template-columns: repeat(auto-fill, minmax(195px, 1fr));
+    gap: var(--space-3);
+  }
+}
+
+.item-card.is-grid-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.grid-card-top {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  text-align: left;
+  width: 100%;
+  flex: 1;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.grid-thumb {
+  position: relative;
+  width: 100%;
+  height: 92px;
+  background: #ffffff;
+  border-bottom: 1px solid var(--color-divider);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 8px;
+}
+
+.grid-thumb img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.grid-thumb.is-empty {
+  background: var(--color-surface-offset);
+  color: var(--color-text-faint);
+}
+
+.grid-thumb.is-empty svg {
+  width: 30px;
+  height: 30px;
+}
+
+.grid-thumb .status-pill {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: 10px;
+  padding: 2px 7px;
+}
+
+.grid-body {
+  padding: 10px 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.grid-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--color-text);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin: 0;
+}
+
+.grid-spec {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--color-text-secondary);
+  line-height: 1.25;
+}
+
+.grid-spec .spec-size {
+  font-size: 11px;
+  padding: 1px 5px;
+}
+
+.grid-spec .spec-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.grid-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.grid-tags .conex-tag,
+.grid-tags .crew-tag,
+.grid-tags .bin-tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stepper-wrap.is-grid-stepper {
+  padding: 8px;
+  gap: 6px;
+}
+
+.stepper.is-compact {
+  grid-template-columns: 38px minmax(0, 1fr) 38px;
+  gap: 6px;
+}
+
+.stepper.is-compact .step-btn {
+  height: 38px;
+  font-size: 13px;
+  padding: 0;
+}
+
+.stepper.is-compact .qty-btn {
+  height: 38px;
+  padding: 0 4px;
+  gap: 3px;
+}
+
+.stepper.is-compact .qty-val {
+  font-size: 16px;
+}
+
+.stepper.is-compact .qty-unit {
+  font-size: 10px;
+}
+
+.card-xfer-btn.is-compact {
+  height: 32px;
+  font-size: 11.5px;
+  padding: 0 8px;
+}
+
+
 
 
