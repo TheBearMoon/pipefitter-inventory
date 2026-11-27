@@ -2627,10 +2627,12 @@
   function updateAuthGate() {
     const gate = $('#authGate');
     const shell = $('.app-shell');
+    const dock = $('.bottom-dock');
     if (!gate || !shell) return;
     const mustSignIn = Boolean(Cloud.configured && !Cloud.user);
     gate.classList.toggle('hidden', !mustSignIn);
     shell.classList.toggle('hidden', mustSignIn);
+    if (dock) dock.classList.toggle('hidden', mustSignIn);
     if (mustSignIn) closeSheet();
   }
 
