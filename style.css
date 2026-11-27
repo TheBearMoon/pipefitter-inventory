@@ -2272,6 +2272,56 @@ button.list-item:active {
 }
 
 /* View-Only Team Lock Banner */
+.auth-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.auth-gate.hidden { display: none; }
+.auth-card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 28px 22px;
+  box-shadow: var(--shadow-lg, 0 18px 40px rgba(0, 0, 0, 0.12));
+  text-align: left;
+}
+.auth-logo {
+  width: 60px;
+  height: 60px;
+  border-radius: 14px;
+  display: block;
+  margin: 0 auto 12px;
+  border: 1px solid var(--border);
+}
+.auth-title {
+  font-size: 20px;
+  font-weight: 700;
+  text-align: center;
+  margin: 0 0 6px;
+}
+.auth-sub {
+  font-size: 13px;
+  color: var(--muted);
+  text-align: center;
+  margin: 0 0 18px;
+  line-height: 1.45;
+}
+.auth-note {
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+  margin: 14px 0 0;
+  line-height: 1.4;
+}
+
 .readonly-banner {
   display: flex;
   align-items: center;

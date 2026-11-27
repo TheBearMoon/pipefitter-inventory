@@ -21,6 +21,24 @@
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
+  <div id="authGate" class="auth-gate hidden" role="dialog" aria-modal="true" aria-label="Sign in">
+    <div class="auth-card">
+      <img src="./icon-192.png" alt="Pipefitter Inventory" class="auth-logo">
+      <h1 class="auth-title">Pipefitter Inventory</h1>
+      <p class="auth-sub">Sign in with your crew, supervisor, or admin account to access yard inventory.</p>
+      <div class="field">
+        <label for="ag-u">Username or Email</label>
+        <input id="ag-u" type="text" placeholder="e.g. oniel" autocomplete="username">
+      </div>
+      <div class="field" id="fg-ag-p">
+        <label for="ag-p">Password</label>
+        <input id="ag-p" type="password" placeholder="••••••" autocomplete="current-password">
+        <div class="field-error" id="ag-err">Invalid username or password.</div>
+      </div>
+      <button type="button" class="btn btn-primary" style="width:100%" id="ag-submit">Sign in</button>
+      <p class="auth-note">Stays signed in automatically when offline. Ask your Main Admin or Supervisor for an account.</p>
+    </div>
+  </div>
   <a href="#mainContent" class="skip-link">Skip to inventory</a>
 
   <div class="app-shell">

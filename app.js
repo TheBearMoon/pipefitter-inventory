@@ -2624,12 +2624,56 @@
     });
   }
 
+  function updateAuthGate() {
+    const gate = $('#authGate');
+    const shell = $('.app-shell');
+    if (!gate || !shell) return;
+    const mustSignIn = Boolean(Cloud.configured && !Cloud.user);
+    gate.classList.toggle('hidden', !mustSignIn);
+    shell.classList.toggle('hidden', mustSignIn);
+    if (mustSignIn) closeSheet();
+  }
+
   async function bootCloud() {
+    const submitBtn = $('#ag-submit');
+    if (submitBtn && !submitBtn.dataset.bound) {
+      submitBtn.dataset.bound = '1';
+      const doLogin = async () => {
+        const u = ($('#ag-u')?.value || '').trim();
+        const p = $('#ag-p')?.value || '';
+        if (!u || p.length < 6) {
+          $('#ag-err').textContent = 'Enter your username and password.';
+          $('#fg-ag-p').classList.add('has-error');
+          return;
+        }
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Signing in...';
+        try {
+          await Cloud.signIn(u, p);
+          $('#fg-ag-p').classList.remove('has-error');
+          $('#ag-p').value = '';
+          updateAuthGate();
+          render();
+        } catch (err) {
+          $('#ag-err').textContent = 'Invalid username or password.';
+          $('#fg-ag-p').classList.add('has-error');
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Sign in';
+        }
+      };
+      submitBtn.onclick = doLogin;
+      $('#ag-p').onkeydown = (e) => { if (e.key === 'Enter') doLogin(); };
+      $('#ag-u').oninput = () => $('#fg-ag-p').classList.remove('has-error');
+      $('#ag-p').oninput = () => $('#fg-ag-p').classList.remove('has-error');
+    }
+
     return Cloud.init({
       onStateChange: () => {
         if (Cloud.profile && Cloud.profile.teamId) {
           S.myTeamId = Cloud.profile.teamId;
         }
+        updateAuthGate();
         render();
       },
       onRemoteData: (patch) => {
@@ -2656,6 +2700,10 @@
     } else {
       seed();
       save();
+    }
+    if (Cloud.getSavedConfig && Cloud.getSavedConfig()) {
+      Cloud.configured = true;
+      updateAuthGate();
     }
     render();
     bootCloud().catch(() => {});
