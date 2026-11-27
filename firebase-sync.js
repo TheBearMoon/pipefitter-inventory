@@ -1,4 +1,5 @@
 // Firebase Spark (Auth + Cloud Firestore with Offline Persistence) bridge for Pipefitter Inventory
+// Supports 3-tier hierarchy: Main Admin -> Supervisor -> Crew
 (() => {
   const FB_VER = '10.14.1';
   const LS_CFG_KEY = 'pipefitter_fb_config_v1';
@@ -7,9 +8,10 @@
     configured: false,
     ready: false,
     online: navigator.onLine,
+    config: null,
     user: null,       // Firebase Auth user
-    profile: null,    // { uid, username, displayName, role: 'admin'|'crew', teamId }
-    users: [],        // All user profiles (for Admin Panel)
+    profile: null,    // { uid, username, displayName, role: 'admin'|'supervisor'|'crew', supervisorId, teamId }
+    users: [],        // Visible user profiles (all for admin; own group for supervisor/crew)
     unsubs: [],
     onStateChange: null,
     onRemoteData: null,
@@ -42,6 +44,18 @@
       return s.includes('@') ? s : s.replace(/[^a-z0-9._-]/g, '') + '@pipefitter.local';
     },
 
+    isAdmin() { return Boolean(this.user && this.profile && this.profile.role === 'admin'); },
+    isSupervisor() { return Boolean(this.user && this.profile && this.profile.role === 'supervisor'); },
+    isCrew() { return Boolean(this.user && this.profile && this.profile.role === 'crew'); },
+    mySupervisorId() {
+      if (!this.profile) return null;
+      if (this.profile.role === 'supervisor') return this.profile.uid;
+      return this.profile.supervisorId || null;
+    },
+    supervisors() {
+      return this.users.filter((u) => u.role === 'supervisor');
+    },
+
     loadScript(src) {
       return new Promise((resolve, reject) => {
         if (document.querySelector(`script[src="${src}"]`)) return resolve();
@@ -68,6 +82,7 @@
         return false;
       }
 
+      this.config = cfg;
       this.configured = true;
       try {
         await this.loadScript(`https://www.gstatic.com/firebasejs/${FB_VER}/firebase-app-compat.js`);
@@ -81,9 +96,7 @@
         this.db = window.firebase.firestore();
         try {
           await this.db.enablePersistence({ synchronizeTabs: true });
-        } catch (err) {
-          // Multi-tab or private browsing fallback — still works online/memory
-        }
+        } catch (err) {}
 
         this.ready = true;
         this.auth.onAuthStateChanged(async (u) => {
@@ -113,7 +126,6 @@
         this.profile = { uid: u.uid, ...snap.data() };
         return this.profile;
       }
-      // First user in the project becomes Admin automatically
       const existing = await this.db.collection('users').limit(1).get();
       const isFirst = existing.empty;
       const username = extra.username || (u.email || '').split('@')[0] || 'user';
@@ -121,7 +133,8 @@
         uid: u.uid,
         username,
         displayName: extra.displayName || username,
-        role: isFirst ? 'admin' : 'crew',
+        role: isFirst ? 'admin' : (extra.role || 'crew'),
+        supervisorId: extra.supervisorId || '',
         teamId: extra.teamId || 'team-1',
         createdAt: Date.now()
       };
@@ -150,6 +163,36 @@
       return this.profile;
     },
 
+    // Create a Supervisor (Admin only) or Crew (Admin or Supervisor) without signing out the current user
+    async createManagedAccount({ username, password, displayName, role, supervisorId, teamId }) {
+      if (!this.ready || !this.user) throw new Error('Not signed in');
+      if (role === 'supervisor' && !this.isAdmin()) throw new Error('Only Main Admin can create Supervisors');
+      if (role === 'crew' && !this.isAdmin() && !this.isSupervisor()) throw new Error('Not authorized');
+
+      const secName = 'pf_creator_' + Date.now();
+      const secApp = window.firebase.initializeApp(this.config, secName);
+      try {
+        const email = this.toAuthEmail(username);
+        const cred = await secApp.auth().createUserWithEmailAndPassword(email, password);
+        const uid = cred.user.uid;
+        const supId = role === 'supervisor' ? uid : (this.isSupervisor() ? this.user.uid : (supervisorId || ''));
+        const profile = {
+          uid,
+          username: String(username).trim().split('@')[0],
+          displayName: String(displayName || username).trim(),
+          role,
+          supervisorId: supId,
+          teamId: role === 'crew' ? (teamId || '') : '',
+          createdAt: Date.now()
+        };
+        await this.db.collection('users').doc(uid).set(profile);
+        await secApp.auth().signOut();
+        return profile;
+      } finally {
+        await secApp.delete().catch(() => {});
+      }
+    },
+
     async signOut() {
       this.stopListeners();
       if (this.auth) await this.auth.signOut();
@@ -165,35 +208,66 @@
     },
 
     startListeners() {
-      if (!this.db || !this.user) return;
+      if (!this.db || !this.user || !this.profile) return;
+      const admin = this.isAdmin();
+      const supId = this.mySupervisorId();
+
       this.unsubs.push(
         this.db.collection('yard').doc('meta').onSnapshot((doc) => {
           if (doc.exists) this.onRemoteData({ meta: doc.data() });
         })
       );
+
+      const teamsQ = admin
+        ? this.db.collection('teams')
+        : this.db.collection('teams').where('supervisorId', '==', supId || '__none__');
       this.unsubs.push(
-        this.db.collection('conexes').onSnapshot((snap) => {
+        teamsQ.onSnapshot((snap) => {
+          const teams = [];
+          snap.forEach((d) => teams.push({ id: d.id, ...d.data() }));
+          if (teams.length || !admin) this.onRemoteData({ teams });
+        })
+      );
+
+      const conexQ = admin
+        ? this.db.collection('conexes')
+        : this.db.collection('conexes').where('supervisorId', '==', supId || '__none__');
+      this.unsubs.push(
+        conexQ.onSnapshot((snap) => {
           const conexes = [];
           snap.forEach((d) => conexes.push({ id: d.id, ...d.data() }));
-          if (conexes.length) this.onRemoteData({ conexes });
+          this.onRemoteData({ conexes, hasRemoteConexes: true });
         })
       );
+
+      const itemsQ = admin
+        ? this.db.collection('items')
+        : this.db.collection('items').where('supervisorId', '==', supId || '__none__');
       this.unsubs.push(
-        this.db.collection('items').onSnapshot((snap) => {
+        itemsQ.onSnapshot((snap) => {
           const items = [];
           snap.forEach((d) => items.push({ id: d.id, ...d.data() }));
-          this.onRemoteData({ items, hasRemoteItems: !snap.empty });
+          this.onRemoteData({ items, hasRemoteItems: !snap.empty || !admin });
         })
       );
+
+      const logsQ = admin
+        ? this.db.collection('logs').orderBy('ts', 'desc').limit(150)
+        : this.db.collection('logs').where('supervisorId', '==', supId || '__none__').limit(150);
       this.unsubs.push(
-        this.db.collection('logs').orderBy('ts', 'desc').limit(150).onSnapshot((snap) => {
+        logsQ.onSnapshot((snap) => {
           const logs = [];
           snap.forEach((d) => logs.push({ id: d.id, ...d.data() }));
+          logs.sort((a, b) => (b.ts || b.t || 0) - (a.ts || a.t || 0));
           this.onRemoteData({ logs });
         })
       );
+
+      const usersQ = admin
+        ? this.db.collection('users')
+        : this.db.collection('users').where('supervisorId', '==', supId || '__none__');
       this.unsubs.push(
-        this.db.collection('users').onSnapshot((snap) => {
+        usersQ.onSnapshot((snap) => {
           const users = [];
           snap.forEach((d) => users.push({ uid: d.id, ...d.data() }));
           this.users = users;
@@ -204,18 +278,43 @@
       );
     },
 
-    async pushMeta(teams, photoLibrary) {
-      if (!this.ready || !this.user || this.profile?.role !== 'admin') return;
-      await this.db.collection('yard').doc('meta').set({ teams, photoLibrary, updatedAt: Date.now() }, { merge: true });
+    async pushMeta(photoLibrary) {
+      if (!this.isAdmin()) return;
+      await this.db.collection('yard').doc('meta').set({ photoLibrary, updatedAt: Date.now() }, { merge: true });
+    },
+
+    async pushTeam(team) {
+      if (!this.isAdmin() && !this.isSupervisor()) return;
+      const doc = { ...team, supervisorId: this.isSupervisor() ? this.user.uid : (team.supervisorId || '') };
+      await this.db.collection('teams').doc(doc.id).set(doc, { merge: true });
+    },
+
+    // Main Admin only: transfer a Team (and all its Conex boxes + items) to a different Supervisor
+    async transferTeamToSupervisor(teamId, newSupervisorId, conexes, items) {
+      if (!this.isAdmin()) throw new Error('Only Main Admin can transfer teams between supervisors');
+      const batch = this.db.batch();
+      batch.set(this.db.collection('teams').doc(teamId), { supervisorId: newSupervisorId }, { merge: true });
+      const teamConexIds = new Set();
+      conexes.filter((c) => c.teamId === teamId).forEach((c) => {
+        teamConexIds.add(c.id);
+        batch.set(this.db.collection('conexes').doc(c.id), { supervisorId: newSupervisorId }, { merge: true });
+      });
+      items.filter((it) => teamConexIds.has(it.conexId)).forEach((it) => {
+        batch.set(this.db.collection('items').doc(it.id), { supervisorId: newSupervisorId }, { merge: true });
+      });
+      this.users.filter((u) => u.role === 'crew' && u.teamId === teamId).forEach((u) => {
+        batch.set(this.db.collection('users').doc(u.uid), { supervisorId: newSupervisorId }, { merge: true });
+      });
+      await batch.commit();
     },
 
     async pushConex(conex) {
-      if (!this.ready || !this.user || this.profile?.role !== 'admin') return;
+      if (!this.isAdmin() && !this.isSupervisor()) return;
       await this.db.collection('conexes').doc(conex.id).set(conex, { merge: true });
     },
 
     async deleteConex(conexId) {
-      if (!this.ready || !this.user || this.profile?.role !== 'admin') return;
+      if (!this.isAdmin() && !this.isSupervisor()) return;
       await this.db.collection('conexes').doc(conexId).delete();
     },
 
@@ -236,22 +335,22 @@
     },
 
     async updateUserProfile(uid, patch) {
-      if (!this.ready || !this.user || this.profile?.role !== 'admin') return;
+      if (!this.isAdmin() && !this.isSupervisor()) return;
       await this.db.collection('users').doc(uid).set(patch, { merge: true });
     },
 
     async seedCloudIfEmpty(state) {
-      if (!this.ready || !this.user || this.profile?.role !== 'admin') return;
+      if (!this.isAdmin()) return;
       const metaSnap = await this.db.collection('yard').doc('meta').get();
       if (metaSnap.exists) return;
       const batch = this.db.batch();
       batch.set(this.db.collection('yard').doc('meta'), {
-        teams: state.teams,
-        photoLibrary: state.photoLibrary,
+        photoLibrary: state.photoLib || [],
         updatedAt: Date.now()
       });
-      state.conexes.forEach((c) => batch.set(this.db.collection('conexes').doc(c.id), c));
-      state.items.forEach((it) => batch.set(this.db.collection('items').doc(it.id), it));
+      state.teams.forEach((t) => batch.set(this.db.collection('teams').doc(t.id), { ...t, supervisorId: t.supervisorId || '' }));
+      state.conexes.forEach((c) => batch.set(this.db.collection('conexes').doc(c.id), { ...c, supervisorId: c.supervisorId || '' }));
+      state.items.forEach((it) => batch.set(this.db.collection('items').doc(it.id), { ...it, supervisorId: it.supervisorId || '' }));
       await batch.commit();
     }
   };

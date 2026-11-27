@@ -4,49 +4,81 @@ service cloud.firestore {
     function signedIn() {
       return request.auth != null;
     }
-    function userDoc() {
+    function me() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
     function isAdmin() {
-      return signedIn() && userDoc().role == 'admin';
+      return signedIn() && me().role == 'admin';
     }
-    function myTeamId() {
-      return userDoc().teamId;
+    function isSupervisor() {
+      return signedIn() && me().role == 'supervisor';
+    }
+    function mySupId() {
+      return isSupervisor() ? request.auth.uid : me().supervisorId;
     }
 
-    // User profiles: any signed-in user can read; users can create their own profile;
-    // only Admins can change roles or team assignments.
+    // Users collection:
+    // - Main Admin can read/write all users (create supervisors, crews, reassign supervisors).
+    // - Supervisor can read/create/update Crew accounts strictly under their own supervisorId.
+    // - Crew can read users in their own supervisor group and create their own initial profile.
     match /users/{uid} {
-      allow read: if signedIn();
-      allow create: if signedIn() && request.auth.uid == uid;
-      allow update, delete: if isAdmin();
+      allow read: if isAdmin() || (signedIn() && (request.auth.uid == uid || resource.data.supervisorId == mySupId()));
+      allow create: if isAdmin()
+        || (signedIn() && request.auth.uid == uid)
+        || (isSupervisor() && request.resource.data.role == 'crew' && request.resource.data.supervisorId == request.auth.uid);
+      allow update: if isAdmin()
+        || (isSupervisor() && resource.data.role == 'crew' && resource.data.supervisorId == request.auth.uid
+            && request.resource.data.role == 'crew' && request.resource.data.supervisorId == request.auth.uid);
+      allow delete: if isAdmin()
+        || (isSupervisor() && resource.data.role == 'crew' && resource.data.supervisorId == request.auth.uid);
     }
 
-    // Shared yard state document (teams, conexes, photoLibrary)
+    // Shared yard metadata (photoLibrary, global settings)
     match /yard/{docId} {
       allow read: if signedIn();
       allow write: if isAdmin();
     }
 
-    // Inventory items: everyone can view; Admins can edit any item;
-    // Crew members can only edit items in Conex boxes owned by their assigned team.
-    match /items/{itemId} {
-      allow read: if signedIn();
-      allow write: if isAdmin() || (
-        signedIn() &&
-        get(/databases/$(database)/documents/conexes/$(resource != null ? resource.data.conexId : request.resource.data.conexId)).data.teamId == myTeamId()
-      );
+    // Teams collection (each team has a supervisorId):
+    // - Main Admin: full read/write (only Admin can transfer a team to a different supervisorId).
+    // - Supervisor: read/create/update teams strictly under their own supervisorId (cannot change supervisorId).
+    // - Crew: read-only for teams under their own supervisorId.
+    match /teams/{teamId} {
+      allow read: if isAdmin() || (signedIn() && resource.data.supervisorId == mySupId());
+      allow create: if isAdmin() || (isSupervisor() && request.resource.data.supervisorId == request.auth.uid);
+      allow update: if isAdmin()
+        || (isSupervisor() && resource.data.supervisorId == request.auth.uid && request.resource.data.supervisorId == request.auth.uid);
+      allow delete: if isAdmin() || (isSupervisor() && resource.data.supervisorId == request.auth.uid);
     }
 
-    // Conex boxes: everyone can view; only Admins can create, rename, or transfer between teams.
+    // Conex boxes (each conex has teamId and supervisorId):
+    // - Main Admin: full read/write (can transfer across supervisors).
+    // - Supervisor: read/write/transfer Conex boxes strictly within their own supervisorId.
+    // - Crew: read-only for Conex boxes under their own supervisorId.
     match /conexes/{conexId} {
-      allow read: if signedIn();
-      allow write: if isAdmin();
+      allow read: if isAdmin() || (signedIn() && resource.data.supervisorId == mySupId());
+      allow create: if isAdmin() || (isSupervisor() && request.resource.data.supervisorId == request.auth.uid);
+      allow update: if isAdmin()
+        || (isSupervisor() && resource.data.supervisorId == request.auth.uid && request.resource.data.supervisorId == request.auth.uid);
+      allow delete: if isAdmin() || (isSupervisor() && resource.data.supervisorId == request.auth.uid);
     }
 
-    // Activity logs: everyone can view and append; only Admins can delete/reset.
+    // Inventory items (each item has conexId and supervisorId):
+    // - Main Admin: full read/write.
+    // - Supervisor: read/write items strictly under their own supervisorId.
+    // - Crew: read-only for items under their own supervisorId; write ONLY if item's conex belongs to their own teamId.
+    match /items/{itemId} {
+      allow read: if isAdmin() || (signedIn() && resource.data.supervisorId == mySupId());
+      allow write: if isAdmin()
+        || (isSupervisor() && (resource == null ? request.resource.data.supervisorId == request.auth.uid : resource.data.supervisorId == request.auth.uid))
+        || (signedIn() && me().role == 'crew' &&
+            get(/databases/$(database)/documents/conexes/$(resource != null ? resource.data.conexId : request.resource.data.conexId)).data.teamId == me().teamId);
+    }
+
+    // Activity logs: scoped by supervisorId; Main Admin sees all.
     match /logs/{logId} {
-      allow read, create: if signedIn();
+      allow read: if isAdmin() || (signedIn() && resource.data.supervisorId == mySupId());
+      allow create: if signedIn();
       allow update, delete: if isAdmin();
     }
   }

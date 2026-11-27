@@ -239,6 +239,7 @@
     if (!cx) return false;
     if (Cloud.user && Cloud.profile) {
       if (Cloud.profile.role === 'admin') return true;
+      if (Cloud.profile.role === 'supervisor') return cx.supervisorId === Cloud.user.uid;
       return cx.teamId === Cloud.profile.teamId;
     }
     return cx.teamId === S.myTeamId || unlockedTeams.has(cx.teamId);
@@ -722,15 +723,17 @@
       return !curP || curP.label !== def.label || curP.src !== def.src;
     });
 
+    const roleLabel = Cloud.profile?.role === 'admin' ? 'Main Admin'
+      : Cloud.profile?.role === 'supervisor' ? 'Supervisor' : 'Crew';
     const cloudTitle = !Cloud.configured
       ? 'Not connected (Local offline only)'
       : Cloud.user && Cloud.profile
-        ? `${esc(Cloud.profile.displayName)} · ${Cloud.profile.role === 'admin' ? 'Admin' : 'Crew'}`
+        ? `${esc(Cloud.profile.displayName)} · ${roleLabel}`
         : 'Connected · Sign in required';
     const cloudDesc = !Cloud.configured
       ? 'Paste your free Firebase Spark config to enable logins & live sync'
       : Cloud.user && Cloud.profile
-        ? `${Cloud.online ? 'Live sync active' : 'Offline — changes queued'} · ${esc(teamById(Cloud.profile.teamId)?.name || 'Unassigned')}`
+        ? `${Cloud.online ? 'Live sync active' : 'Offline — changes queued'} · ${Cloud.profile.role === 'admin' ? 'Full Yard' : Cloud.profile.role === 'supervisor' ? 'Own Teams Group' : esc(teamById(Cloud.profile.teamId)?.name || 'Unassigned')}`
         : 'Sign in with your username to sync inventory across devices';
 
     $('#v-tools').innerHTML = `
@@ -745,12 +748,12 @@
             </span>
             <span class="li-chev">${ICON.chev}</span>
           </button>
-          ${Cloud.user && Cloud.profile?.role === 'admin' ? `
+          ${Cloud.user && (Cloud.profile?.role === 'admin' || Cloud.profile?.role === 'supervisor') ? `
             <button type="button" class="list-item" id="adminPanelBtn">
               <span class="li-icon">${ICON.lock}</span>
               <span class="li-text">
-                <span class="li-label">Admin Panel · Manage Users &amp; Roles</span>
-                <span class="li-desc">${Cloud.users.length} registered account${Cloud.users.length === 1 ? '' : 's'}</span>
+                <span class="li-label">${Cloud.profile.role === 'admin' ? 'Main Admin Panel · Supervisors, Teams &amp; Users' : 'Supervisor Panel · Create Crew &amp; Manage Group'}</span>
+                <span class="li-desc">${Cloud.users.length} account${Cloud.users.length === 1 ? '' : 's'} in scope</span>
               </span>
               <span class="li-chev">${ICON.chev}</span>
             </button>` : ''}
@@ -949,11 +952,13 @@
   }
 
   function logIt(i, kind, from, to, note, extra) {
+    const cx = conexById(i.conexId);
     const entry = {
       t: Date.now(),
       ts: Date.now(),
       id: i.id,
       conexId: i.conexId,
+      supervisorId: (cx && cx.supervisorId) || (Cloud.mySupervisorId ? Cloud.mySupervisorId() : '') || '',
       name: i.name,
       kind,
       delta: to - from,
@@ -2454,45 +2459,167 @@
     renderAuth();
   }
 
+  function openCreateAccountSheet(defaultRole) {
+    const isAdmin = Cloud.profile?.role === 'admin';
+    const isSup = Cloud.profile?.role === 'supervisor';
+    if (!isAdmin && !isSup) return;
+    const role = isAdmin ? (defaultRole || 'crew') : 'crew';
+    const sups = Cloud.supervisors ? Cloud.supervisors() : [];
+    const teamOpts = S.teams.map((t) => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
+
+    openSheet(role === 'supervisor' ? 'Create Supervisor Account' : 'Create Crew Account', `
+      <div class="field">
+        <label for="ca-u">Username</label>
+        <input id="ca-u" type="text" placeholder="e.g. mgarcia">
+      </div>
+      <div class="field">
+        <label for="ca-n">Display Name</label>
+        <input id="ca-n" type="text" placeholder="e.g. M. Garcia">
+      </div>
+      <div class="field">
+        <label for="ca-p">Temporary Password (min 6 chars)</label>
+        <input id="ca-p" type="password" placeholder="••••••">
+      </div>
+      ${role === 'crew' ? `
+        ${isAdmin && sups.length ? `
+          <div class="field">
+            <label for="ca-sup">Supervisor</label>
+            <select id="ca-sup">
+              <option value="">Unassigned</option>
+              ${sups.map((s) => `<option value="${esc(s.uid)}">${esc(s.displayName || s.username)}</option>`).join('')}
+            </select>
+          </div>` : ''}
+        <div class="field">
+          <label for="ca-tm">Assigned Team</label>
+          <select id="ca-tm">${teamOpts}</select>
+        </div>` : ''}
+      <div class="field-error" id="ca-err" style="display:none"></div>
+    `,
+    `<button type="button" class="btn" style="flex:1" id="ca-cancel">Cancel</button>
+     <button type="button" class="btn btn-primary" style="flex:2" id="ca-go">Create ${role === 'supervisor' ? 'Supervisor' : 'Crew'}</button>`);
+
+    $('#ca-cancel').onclick = () => { closeSheet(); openAdminPanel(); };
+    $('#ca-go').onclick = async () => {
+      const username = $('#ca-u').value.trim();
+      const displayName = $('#ca-n').value.trim() || username;
+      const password = $('#ca-p').value;
+      if (!username || password.length < 6) {
+        $('#ca-err').textContent = 'Enter a username and a password (6+ characters).';
+        $('#ca-err').style.display = 'block';
+        return;
+      }
+      try {
+        await Cloud.createManagedAccount({
+          username,
+          password,
+          displayName,
+          role,
+          supervisorId: role === 'crew' ? (isSup ? Cloud.user.uid : ($('#ca-sup')?.value || '')) : '',
+          teamId: role === 'crew' ? ($('#ca-tm')?.value || S.teams[0]?.id || '') : ''
+        });
+        closeSheet();
+        toast(`Created ${role === 'supervisor' ? 'Supervisor' : 'Crew'} account: ${displayName}`);
+        openAdminPanel();
+      } catch (err) {
+        $('#ca-err').textContent = err?.message || 'Could not create account.';
+        $('#ca-err').style.display = 'block';
+      }
+    };
+  }
+
+  function openTransferTeamSupervisorSheet() {
+    if (Cloud.profile?.role !== 'admin') return;
+    const sups = Cloud.supervisors ? Cloud.supervisors() : [];
+    if (!sups.length) { toast('Create a Supervisor first'); return; }
+    openSheet('Transfer Team to Supervisor', `
+      <div class="info-callout" style="margin-bottom:14px">
+        <span>Only the <strong>Main Admin</strong> can move a Team (along with its Conex boxes, inventory, and crew) to a different Supervisor.</span>
+      </div>
+      <div class="field">
+        <label for="tts-tm">Team to transfer</label>
+        <select id="tts-tm">${S.teams.map((t) => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('')}</select>
+      </div>
+      <div class="field">
+        <label for="tts-sup">New Supervisor</label>
+        <select id="tts-sup">${sups.map((s) => `<option value="${esc(s.uid)}">${esc(s.displayName || s.username)}</option>`).join('')}</select>
+      </div>
+    `,
+    `<button type="button" class="btn" style="flex:1" id="tts-cancel">Cancel</button>
+     <button type="button" class="btn btn-primary" style="flex:2" id="tts-go">Transfer Team</button>`);
+
+    $('#tts-cancel').onclick = () => { closeSheet(); openAdminPanel(); };
+    $('#tts-go').onclick = async () => {
+      const tid = $('#tts-tm').value;
+      const sid = $('#tts-sup').value;
+      await Cloud.transferTeamToSupervisor(tid, sid, S.conexes, S.items);
+      closeSheet();
+      toast('Team transferred to new Supervisor');
+    };
+  }
+
   function openAdminPanel() {
-    if (!Cloud.user || Cloud.profile?.role !== 'admin') {
-      toast('Admin access required');
+    const isAdmin = Cloud.user && Cloud.profile?.role === 'admin';
+    const isSup = Cloud.user && Cloud.profile?.role === 'supervisor';
+    if (!isAdmin && !isSup) {
+      toast('Admin or Supervisor access required');
       return;
     }
-    const rows = Cloud.users.map((u) => `
+    const visibleUsers = isAdmin
+      ? Cloud.users
+      : Cloud.users.filter((u) => u.role === 'crew' && u.supervisorId === Cloud.user.uid);
+
+    const actionsHtml = isAdmin ? `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+        <button type="button" class="btn btn-primary" id="adm-new-sup">+ New Supervisor</button>
+        <button type="button" class="btn" id="adm-new-crew">+ New Crew</button>
+      </div>
+      <button type="button" class="btn" style="width:100%;margin-bottom:14px" id="adm-xfer-team">⇄ Transfer Team to Supervisor</button>
+    ` : `
+      <button type="button" class="btn btn-primary" style="width:100%;margin-bottom:14px" id="adm-new-crew">+ Create Crew Account</button>
+    `;
+
+    const rows = visibleUsers.map((u) => `
       <div class="panel" style="margin-bottom:10px;padding:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
           <div>
             <strong>${esc(u.displayName || u.username)}</strong>
             <div style="font-size:12px;color:var(--muted)">@${esc(u.username)}</div>
           </div>
-          <span class="badge">${u.role === 'admin' ? 'Admin' : 'Crew'}</span>
+          <span class="badge">${u.role === 'admin' ? 'Main Admin' : u.role === 'supervisor' ? 'Supervisor' : 'Crew'}</span>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <select class="adm-role" data-uid="${esc(u.uid)}">
-            <option value="crew" ${u.role !== 'admin' ? 'selected' : ''}>Crew (Own Team)</option>
-            <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin (Full Yard)</option>
-          </select>
-          <select class="adm-team" data-uid="${esc(u.uid)}">
-            ${S.teams.map((t) => `<option value="${esc(t.id)}" ${u.teamId === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}
-          </select>
+        <div style="display:grid;grid-template-columns:${isAdmin ? '1fr 1fr' : '1fr'};gap:8px">
+          ${isAdmin ? `
+            <select class="adm-role" data-uid="${esc(u.uid)}">
+              <option value="crew" ${u.role === 'crew' ? 'selected' : ''}>Crew (Own Team)</option>
+              <option value="supervisor" ${u.role === 'supervisor' ? 'selected' : ''}>Supervisor (Own Group)</option>
+              <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Main Admin (Full Yard)</option>
+            </select>` : ''}
+          ${u.role === 'crew' ? `
+            <select class="adm-team" data-uid="${esc(u.uid)}">
+              ${S.teams.map((t) => `<option value="${esc(t.id)}" ${u.teamId === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}
+            </select>` : '<div style="font-size:12px;color:var(--muted);align-self:center">Manages own teams</div>'}
         </div>
       </div>
-    `).join('') || '<div class="empty-note">No users registered yet.</div>';
+    `).join('') || '<div class="empty-note">No accounts in this group yet.</div>';
 
-    openSheet('Admin Panel · Users & Roles', rows,
+    openSheet(isAdmin ? 'Main Admin Panel' : 'Supervisor Panel', actionsHtml + rows,
       `<button type="button" class="btn btn-primary" style="flex:1" id="adm-done">Done</button>`);
     $('#adm-done').onclick = closeSheet;
+    if ($('#adm-new-sup')) $('#adm-new-sup').onclick = () => { closeSheet(); openCreateAccountSheet('supervisor'); };
+    if ($('#adm-new-crew')) $('#adm-new-crew').onclick = () => { closeSheet(); openCreateAccountSheet('crew'); };
+    if ($('#adm-xfer-team')) $('#adm-xfer-team').onclick = () => { closeSheet(); openTransferTeamSupervisorSheet(); };
     $$('.adm-role').forEach((sel) => {
       sel.onchange = async () => {
-        await Cloud.updateUserProfile(sel.dataset.uid, { role: sel.value });
-        toast('Updated user role');
+        const patch = { role: sel.value };
+        if (sel.value === 'supervisor') patch.supervisorId = sel.dataset.uid;
+        await Cloud.updateUserProfile(sel.dataset.uid, patch);
+        toast('Updated account role');
       };
     });
     $$('.adm-team').forEach((sel) => {
       sel.onchange = async () => {
         await Cloud.updateUserProfile(sel.dataset.uid, { teamId: sel.value });
-        toast('Updated user team');
+        toast('Updated crew team');
       };
     });
   }
@@ -2506,11 +2633,11 @@
         render();
       },
       onRemoteData: (patch) => {
-        if (patch.meta) {
-          if (Array.isArray(patch.meta.teams) && patch.meta.teams.length) S.teams = patch.meta.teams;
-          if (Array.isArray(patch.meta.photoLibrary) && patch.meta.photoLibrary.length) S.photoLib = patch.meta.photoLibrary;
+        if (patch.meta && Array.isArray(patch.meta.photoLibrary) && patch.meta.photoLibrary.length) {
+          S.photoLib = patch.meta.photoLibrary;
         }
-        if (Array.isArray(patch.conexes) && patch.conexes.length) S.conexes = patch.conexes;
+        if (Array.isArray(patch.teams) && patch.teams.length) S.teams = patch.teams;
+        if (patch.hasRemoteConexes && Array.isArray(patch.conexes)) S.conexes = patch.conexes;
         if (patch.hasRemoteItems && Array.isArray(patch.items)) S.items = patch.items;
         if (Array.isArray(patch.logs)) S.log = patch.logs;
         save();
