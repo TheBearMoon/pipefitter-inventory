@@ -719,6 +719,8 @@
         ? `<span class="act-note">${esc(cx.name)} → ${esc(toCx.name)}</span>`
         : (l.kind !== 'conex-xfer' && S.activeConex === 'all' && cx ? `<span class="act-note">${esc(cx.name)}</span>` : '');
 
+      const byTag = l.by ? `<span class="act-note">by ${esc(l.by)}</span>` : '';
+
       html += `
         <div class="act-row">
           <div class="act-delta ${k}">${esc(sign)}</div>
@@ -727,6 +729,7 @@
             <div class="act-sub">
               <span>${l.kind === 'conex-xfer' ? esc(l.note) : `${verb} · ${l.from} → ${l.to}`}</span>
               ${routeTag}
+              ${byTag}
               ${l.kind !== 'conex-xfer' && l.note ? `<span class="act-note">${esc(l.note)}</span>` : ''}
             </div>
           </div>
@@ -993,7 +996,8 @@
       delta: to - from,
       from,
       to,
-      note: (Cloud.profile ? `[${Cloud.profile.displayName}] ` : '') + (note || ''),
+      by: Cloud.profile ? (Cloud.profile.displayName || Cloud.profile.username || '') : '',
+      note: note || '',
       ...(extra || {})
     };
     S.log.unshift(entry);
@@ -1386,17 +1390,22 @@
       if (toTm.supervisorId !== undefined) cx.supervisorId = toTm.supervisorId;
       if (Cloud.ready && Cloud.user) Cloud.pushConex(cx).catch(() => {});
       const partCount = S.items.filter((i) => i.conexId === cx.id).length;
-      S.log.unshift({
+      const xferEntry = {
         t: Date.now(),
+        ts: Date.now(),
         id: cx.id,
         conexId: cx.id,
+        supervisorId: cx.supervisorId || (Cloud.mySupervisorId ? Cloud.mySupervisorId() : '') || '',
         name: cx.name,
         kind: 'conex-xfer',
         delta: 0,
         from: 0,
         to: partCount,
-        note: `${fromTm.name} → ${toTm.name} (${partCount} parts)`
-      });
+        by: Cloud.profile ? (Cloud.profile.displayName || Cloud.profile.username || '') : '',
+        note: `${teamDisplayName(fromTm)} → ${teamDisplayName(toTm)} (${partCount} parts)`
+      };
+      S.log.unshift(xferEntry);
+      if (Cloud.ready && Cloud.user) Cloud.pushLog(xferEntry).catch(() => {});
       save();
       closeSheet();
       render();
@@ -2554,23 +2563,94 @@
     };
   }
 
+  function openChangePasswordSheet() {
+    if (!Cloud.user) return;
+    openSheet('Change Password', `
+      <div class="field">
+        <label for="cp-cur">Current Password</label>
+        <input id="cp-cur" type="password" placeholder="Enter current password" autocomplete="current-password">
+      </div>
+      <div class="field">
+        <label for="cp-new">New Password (min 6 chars)</label>
+        <input id="cp-new" type="password" placeholder="Enter new password" autocomplete="new-password">
+      </div>
+      <div class="field">
+        <label for="cp-conf">Confirm New Password</label>
+        <input id="cp-conf" type="password" placeholder="Re-enter new password" autocomplete="new-password">
+      </div>
+      <div class="field-error" id="cp-err" style="display:none"></div>
+    `,
+    `<button type="button" class="btn" style="flex:1" id="cp-cancel">Cancel</button>
+     <button type="button" class="btn btn-primary" style="flex:2" id="cp-save">Update Password</button>`);
+
+    $('#cp-cancel').onclick = () => { closeSheet(); openAuthSheet(); };
+    $('#cp-save').onclick = async () => {
+      const cur = $('#cp-cur').value;
+      const next = $('#cp-new').value;
+      const conf = $('#cp-conf').value;
+      const errEl = $('#cp-err');
+      errEl.style.display = 'none';
+      if (!cur) {
+        errEl.textContent = 'Enter your current password.';
+        errEl.style.display = 'block';
+        $('#cp-cur').focus();
+        return;
+      }
+      if (next.length < 6) {
+        errEl.textContent = 'New password must be at least 6 characters.';
+        errEl.style.display = 'block';
+        $('#cp-new').focus();
+        return;
+      }
+      if (next !== conf) {
+        errEl.textContent = 'New passwords do not match.';
+        errEl.style.display = 'block';
+        $('#cp-conf').focus();
+        return;
+      }
+      const btn = $('#cp-save');
+      btn.disabled = true;
+      btn.textContent = 'Updating...';
+      try {
+        await Cloud.changePassword(cur, next);
+        closeSheet();
+        toast('Password updated');
+      } catch (err) {
+        const msg = (err?.code === 'auth/wrong-password' || err?.code === 'auth/invalid-credential')
+          ? 'Current password is incorrect.'
+          : (err?.message || 'Could not update password.');
+        errEl.textContent = msg;
+        errEl.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Update Password';
+      }
+    };
+    setTimeout(() => $('#cp-cur')?.focus(), 200);
+  }
+
   function openAuthSheet() {
     if (Cloud.user && Cloud.profile) {
+      const roleLbl = Cloud.profile.role === 'admin'
+        ? 'Main Admin'
+        : Cloud.profile.role === 'supervisor' ? 'Supervisor' : 'Crew';
       openSheet('Account', `
         <div class="panel" style="margin-bottom:14px">
           <div class="list-item">
             <span class="li-icon">${ICON.shield}</span>
             <span class="li-text">
               <span class="li-label"><strong>${esc(Cloud.profile.displayName)}</strong> (${esc(Cloud.profile.username)})</span>
-              <span class="li-desc">Role: ${Cloud.profile.role === 'admin' ? 'Admin' : 'Crew'} · Team: ${esc(teamById(Cloud.profile.teamId)?.name || 'Unassigned')}</span>
+              <span class="li-desc">Role: ${roleLbl}${Cloud.profile.role === 'crew' ? ` · Team: ${esc(teamDisplayName(Cloud.profile.teamId) || 'Unassigned')}` : ''}</span>
             </span>
           </div>
         </div>
-        ${Cloud.profile.role === 'admin' ? `<button type="button" class="btn btn-primary" style="width:100%;margin-bottom:10px" id="au-admin">Open Admin Panel</button>` : ''}
+        ${Cloud.profile.role === 'admin' || Cloud.profile.role === 'supervisor' ? `<button type="button" class="btn btn-primary" style="width:100%;margin-bottom:10px" id="au-admin">${Cloud.profile.role === 'admin' ? 'Open Main Admin Panel' : 'Open Supervisor Panel'}</button>` : ''}
+        <button type="button" class="btn btn-outline" style="width:100%;margin-bottom:10px" id="au-chpw">${ICON.lock}Change Password</button>
         <button type="button" class="btn btn-danger" style="width:100%" id="au-out">Sign out</button>
       `, `<button type="button" class="btn" style="flex:1" id="au-close">Done</button>`);
       $('#au-close').onclick = closeSheet;
       if ($('#au-admin')) $('#au-admin').onclick = () => { closeSheet(); openAdminPanel(); };
+      if ($('#au-chpw')) $('#au-chpw').onclick = () => { closeSheet(); openChangePasswordSheet(); };
       $('#au-out').onclick = async () => {
         await Cloud.signOut();
         closeSheet();

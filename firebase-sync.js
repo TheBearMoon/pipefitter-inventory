@@ -202,6 +202,15 @@
       this.onStateChange();
     },
 
+    async changePassword(currentPassword, newPassword) {
+      if (!this.auth || !this.user) throw new Error('Not signed in');
+      if (!currentPassword) throw new Error('Enter your current password');
+      if (!newPassword || newPassword.length < 6) throw new Error('New password must be at least 6 characters');
+      const cred = window.firebase.auth.EmailAuthProvider.credential(this.user.email, currentPassword);
+      await this.user.reauthenticateWithCredential(cred);
+      await this.user.updatePassword(newPassword);
+    },
+
     stopListeners() {
       this.unsubs.forEach((fn) => { try { fn(); } catch {} });
       this.unsubs = [];
