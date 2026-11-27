@@ -1000,7 +1000,7 @@
               </span>
               <span class="li-chev">${ICON.chev}</span>
             </button>` : ''}
-          ${Cloud.configured ? `
+          ${Cloud.configured && isMainAdmin() ? `
             <button type="button" class="list-item" id="cloudConfigBtn">
               <span class="li-icon">${ICON.firebase}</span>
               <span class="li-text">
@@ -2898,7 +2898,10 @@
         render();
         break;
       case 'adminPanelBtn': openAdminPanel(); break;
-      case 'cloudConfigBtn': openFirebaseSetup(); break;
+      case 'cloudConfigBtn':
+        if (!isMainAdmin()) { toast('Main Admin access required'); break; }
+        openFirebaseSetup();
+        break;
       case 'setMyTeamBtn': openSetMyTeam(); break;
       case 'setPinBtn': openSetPin(); break;
       case 'relockBtn':
@@ -2978,6 +2981,7 @@
 
   // ---------- Firebase Spark Setup, Auth & Admin Panel ----------
   function openFirebaseSetup() {
+    if (!isMainAdmin()) { toast('Main Admin access required'); return; }
     const cur = Cloud.getSavedConfig();
     openSheet('Firebase Spark Cloud Sync', `
       <div class="info-callout" style="margin-bottom:14px">
