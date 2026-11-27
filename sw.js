@@ -1,4 +1,4 @@
-const CACHE = 'pipefitter-v17';
+const CACHE = 'pipefitter-v18';
 const PRECACHE = [
   './',
   './index.html',
