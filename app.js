@@ -767,7 +767,7 @@
             </button>` : ''}
           ${Cloud.configured ? `
             <button type="button" class="list-item" id="cloudConfigBtn">
-              <span class="li-icon">${ICON.edit}</span>
+              <span class="li-icon">${ICON.firebase}</span>
               <span class="li-text">
                 <span class="li-label">Firebase Spark Settings</span>
                 <span class="li-desc">Update or disconnect your Firebase project config</span>
