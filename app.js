@@ -386,7 +386,6 @@
           ${ICON.lock}
           <span>View only · Owned by ${esc(teamDisplayName(roTeam))}</span>
         </div>
-        <button type="button" class="btn btn-sm btn-outline" data-unlock-team="${esc(roTeam.id)}">Unlock</button>
       </div>`;
   }
 
@@ -772,35 +771,6 @@
               <span class="li-text">
                 <span class="li-label">Firebase Spark Settings</span>
                 <span class="li-desc">Update or disconnect your Firebase project config</span>
-              </span>
-              <span class="li-chev">${ICON.chev}</span>
-            </button>` : ''}
-        </div>
-
-        <div class="panel">
-          <h2 class="panel-title">Access &amp; Team Lock</h2>
-          <button type="button" class="list-item" id="setMyTeamBtn">
-            <span class="li-icon">${ICON.shield}</span>
-            <span class="li-text">
-              <span class="li-label">My Team on this phone: <strong>${esc(myTm.name)}</strong></span>
-              <span class="li-desc">Other teams' Conex boxes stay view-only by default</span>
-            </span>
-            <span class="li-chev">${ICON.chev}</span>
-          </button>
-          <button type="button" class="list-item" id="setPinBtn">
-            <span class="li-icon">${ICON.lock}</span>
-            <span class="li-text">
-              <span class="li-label">Supervisor PIN: <strong>${S.pin ? 'Active (••••)' : 'Not set'}</strong></span>
-              <span class="li-desc">${S.pin ? 'Required to unlock other teams or transfer a Conex box' : 'Set a 4-digit PIN to protect other teams and Conex transfers'}</span>
-            </span>
-            <span class="li-chev">${ICON.chev}</span>
-          </button>
-          ${unlockedTeams.size ? `
-            <button type="button" class="list-item" id="relockBtn">
-              <span class="li-icon">${ICON.unlock}</span>
-              <span class="li-text">
-                <span class="li-label">Re-lock other teams now</span>
-                <span class="li-desc">${unlockedTeams.size} other team${unlockedTeams.size === 1 ? '' : 's'} currently unlocked for editing</span>
               </span>
               <span class="li-chev">${ICON.chev}</span>
             </button>` : ''}
