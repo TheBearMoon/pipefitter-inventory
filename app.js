@@ -971,6 +971,10 @@
       const noteOnly = notes.filter((n) => !n.type || n.type === 'note');
       const latestNote = noteOnly[0] || notes[0] || null;
       const previewItems = list.slice(0, 3);
+      const boltUps = Array.isArray(p.boltUps) ? p.boltUps : [];
+      const boltDone = boltUps.filter((b) => b.status === 'tightened').length;
+      const welds = Array.isArray(p.welds) ? p.welds : [];
+      const weldDone = welds.filter((w) => w.done).length;
       return `
         <article class="pkg-card" data-open-pkg="${esc(p.id)}" role="button" tabindex="0" aria-label="Open package ${esc(p.name)}">
           <div class="pkg-card-head">
@@ -993,6 +997,12 @@
               <span class="pkg-progress-fill is-${sm.cls}" style="width:${pct}%"></span>
             </div>
           </div>
+
+          ${(boltUps.length || welds.length) ? `
+            <div class="pkg-sub-badges">
+              ${boltUps.length ? `<span class="pkg-sub-badge ${boltDone === boltUps.length ? 'is-done' : ''}">Bolt-Up: ${boltDone}/${boltUps.length} tightened</span>` : ''}
+              ${welds.length ? `<span class="pkg-sub-badge ${weldDone === welds.length ? 'is-done' : ''}">Welds: ${weldDone}/${welds.length} done</span>` : ''}
+            </div>` : ''}
 
           ${previewItems.length ? `
             <div class="pkg-preview-list">
@@ -1239,14 +1249,24 @@
     return !Cloud.configured && !n.authorUid;
   }
 
+  const BOLT_STATUS_META = {
+    untouched: { label: 'Untouched', cls: 'untouched' },
+    ready: { label: 'Ready for tightening', cls: 'ready' },
+    tightened: { label: 'Tightened', cls: 'tightened' }
+  };
+
   function openPackageDetail(pkgId, editingNoteId = null) {
     const pkg = S.packages.find((p) => p.id === pkgId);
     if (!pkg) return;
     if (!Array.isArray(pkg.checklist)) pkg.checklist = [];
+    if (!Array.isArray(pkg.boltUps)) pkg.boltUps = [];
+    if (!Array.isArray(pkg.welds)) pkg.welds = [];
     if (!Array.isArray(pkg.notes)) pkg.notes = [];
 
     const xferTargets = transferableTeamsForPackage(pkg);
     const doneCnt = pkg.checklist.filter((c) => c.done).length;
+    const boltDoneCnt = pkg.boltUps.filter((b) => b.status === 'tightened').length;
+    const weldDoneCnt = pkg.welds.filter((w) => w.done).length;
     const stockChoices = S.items.slice().sort((a, b) => a.name.localeCompare(b.name));
 
     const checklistHtml = pkg.checklist.length
@@ -1263,6 +1283,35 @@
             <button type="button" class="pkg-check-del" data-pkg-chk-del="${esc(c.id)}" aria-label="Remove ${esc(c.name)}">×</button>
           </div>`).join('')
       : `<div class="empty-note" style="padding:10px 0">No materials added yet. Add the materials needed to sell off this package below.</div>`;
+
+    const boltUpsHtml = pkg.boltUps.length
+      ? pkg.boltUps.map((b) => {
+          const st = BOLT_STATUS_META[b.status] ? b.status : 'untouched';
+          return `
+            <div class="pkg-bolt-row is-${st}">
+              <span class="pkg-bolt-name">${esc(b.name)}</span>
+              <select class="pkg-bolt-select is-${st}" data-pkg-bolt-st="${esc(b.id)}" aria-label="Status for ${esc(b.name)}">
+                <option value="untouched" ${st === 'untouched' ? 'selected' : ''}>Untouched</option>
+                <option value="ready" ${st === 'ready' ? 'selected' : ''}>Ready for tightening</option>
+                <option value="tightened" ${st === 'tightened' ? 'selected' : ''}>Tightened</option>
+              </select>
+              <button type="button" class="pkg-check-del" data-pkg-bolt-del="${esc(b.id)}" aria-label="Remove ${esc(b.name)}">×</button>
+            </div>`;
+        }).join('')
+      : `<div class="empty-note" style="padding:8px 0">Optional — add bolt-up jobs for this package below.</div>`;
+
+    const weldsHtml = pkg.welds.length
+      ? pkg.welds.map((w) => `
+          <div class="pkg-check-row ${w.done ? 'is-done' : ''}">
+            <button type="button" class="pkg-check-toggle" data-pkg-weld-chk="${esc(w.id)}" aria-pressed="${Boolean(w.done)}" aria-label="Toggle weld ${esc(w.jobNumber)}">
+              <span class="pkg-checkbox">${w.done ? ICON.check : ''}</span>
+              <span class="pkg-check-copy">
+                <span class="pkg-check-name pkg-weld-num">${esc(w.jobNumber)}</span>
+              </span>
+            </button>
+            <button type="button" class="pkg-check-del" data-pkg-weld-del="${esc(w.id)}" aria-label="Remove weld ${esc(w.jobNumber)}">×</button>
+          </div>`).join('')
+      : `<div class="empty-note" style="padding:8px 0">Optional — add weld job numbers below and check them off when completed.</div>`;
 
     const historyHtml = pkg.notes.length
       ? pkg.notes.map((n) => {
@@ -1327,6 +1376,30 @@
             <input id="pkg-mat-qty" type="number" min="1" step="1" value="1" inputmode="numeric" aria-label="Quantity needed">
             <button type="button" class="btn btn-primary pkg-add-mat-btn" id="pkg-mat-add">Add</button>
           </div>
+        </div>
+      </div>
+
+      <div class="pkg-section">
+        <div class="pkg-section-head">
+          <span>Bolt-Up Checklist <small class="pkg-opt-tag">(optional)</small></span>
+          <span class="pkg-section-count">${pkg.boltUps.length ? `${boltDoneCnt}/${pkg.boltUps.length} tightened` : '0'}</span>
+        </div>
+        <div class="pkg-checklist">${boltUpsHtml}</div>
+        <div class="pkg-add-sub-row">
+          <input id="pkg-bolt-name" type="text" placeholder="Bolt-up job (e.g. Flange F-12 / Joint 4)">
+          <button type="button" class="btn btn-primary pkg-add-mat-btn" id="pkg-bolt-add">Add</button>
+        </div>
+      </div>
+
+      <div class="pkg-section">
+        <div class="pkg-section-head">
+          <span>Weld Checklist <small class="pkg-opt-tag">(optional)</small></span>
+          <span class="pkg-section-count">${pkg.welds.length ? `${weldDoneCnt}/${pkg.welds.length} done` : '0'}</span>
+        </div>
+        <div class="pkg-checklist">${weldsHtml}</div>
+        <div class="pkg-add-sub-row">
+          <input id="pkg-weld-num" type="text" placeholder="Weld job # (e.g. W-104 or FW-12)">
+          <button type="button" class="btn btn-primary pkg-add-mat-btn" id="pkg-weld-add">Add</button>
         </div>
       </div>
 
@@ -1447,6 +1520,80 @@
     };
     $('#pkg-mat-add').onclick = addMat;
     $('#pkg-mat-name').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); addMat(); } };
+
+    // Bolt-Up Checklist handlers
+    const addBoltUp = () => {
+      const name = ($('#pkg-bolt-name')?.value || '').trim();
+      if (!name) { $('#pkg-bolt-name')?.focus(); return; }
+      pkg.boltUps.push({ id: pkgUid('b'), name, status: 'untouched' });
+      pkg.updatedAt = Date.now();
+      syncPackageToCloud(pkg);
+      save();
+      render();
+      openPackageDetail(pkg.id);
+    };
+    $('#pkg-bolt-add').onclick = addBoltUp;
+    $('#pkg-bolt-name').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); addBoltUp(); } };
+
+    document.querySelectorAll('[data-pkg-bolt-st]').forEach((sel) => {
+      sel.onchange = () => {
+        const b = pkg.boltUps.find((x) => x.id === sel.dataset.pkgBoltSt);
+        if (!b || !BOLT_STATUS_META[sel.value]) return;
+        b.status = sel.value;
+        pkg.updatedAt = Date.now();
+        syncPackageToCloud(pkg);
+        save();
+        render();
+        openPackageDetail(pkg.id);
+      };
+    });
+    document.querySelectorAll('[data-pkg-bolt-del]').forEach((btn) => {
+      btn.onclick = () => {
+        pkg.boltUps = pkg.boltUps.filter((x) => x.id !== btn.dataset.pkgBoltDel);
+        pkg.updatedAt = Date.now();
+        syncPackageToCloud(pkg);
+        save();
+        render();
+        openPackageDetail(pkg.id);
+      };
+    });
+
+    // Weld Checklist handlers
+    const addWeld = () => {
+      const jobNumber = ($('#pkg-weld-num')?.value || '').trim();
+      if (!jobNumber) { $('#pkg-weld-num')?.focus(); return; }
+      pkg.welds.push({ id: pkgUid('w'), jobNumber, done: false });
+      pkg.updatedAt = Date.now();
+      syncPackageToCloud(pkg);
+      save();
+      render();
+      openPackageDetail(pkg.id);
+    };
+    $('#pkg-weld-add').onclick = addWeld;
+    $('#pkg-weld-num').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); addWeld(); } };
+
+    document.querySelectorAll('[data-pkg-weld-chk]').forEach((btn) => {
+      btn.onclick = () => {
+        const w = pkg.welds.find((x) => x.id === btn.dataset.pkgWeldChk);
+        if (!w) return;
+        w.done = !w.done;
+        pkg.updatedAt = Date.now();
+        syncPackageToCloud(pkg);
+        save();
+        render();
+        openPackageDetail(pkg.id);
+      };
+    });
+    document.querySelectorAll('[data-pkg-weld-del]').forEach((btn) => {
+      btn.onclick = () => {
+        pkg.welds = pkg.welds.filter((x) => x.id !== btn.dataset.pkgWeldDel);
+        pkg.updatedAt = Date.now();
+        syncPackageToCloud(pkg);
+        save();
+        render();
+        openPackageDetail(pkg.id);
+      };
+    });
 
     const autoGrowNote = (el) => {
       if (!el) return;
