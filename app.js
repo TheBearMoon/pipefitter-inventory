@@ -222,6 +222,15 @@
 
   // ---------- Helpers ----------
   const teamById = (id) => S.teams.find((t) => t.id === id) || S.teams[0];
+  function teamDisplayName(teamOrId) {
+    const t = typeof teamOrId === 'string' ? teamById(teamOrId) : teamOrId;
+    if (!t) return '';
+    const crewNames = (Cloud.users || [])
+      .filter((u) => u.role === 'crew' && u.teamId === t.id && (u.displayName || u.username))
+      .map((u) => u.displayName || u.username);
+    if (crewNames.length) return crewNames.join(', ');
+    return t.name;
+  }
   const conexById = (id) => S.conexes.find((c) => c.id === id) || S.conexes[0];
   const conexesForTeam = (tid) => S.conexes.filter((c) => c.teamId === tid);
   const myTeamObj = () => teamById(S.myTeamId);
@@ -355,11 +364,11 @@
     } else if (S.activeConex.startsWith('team:')) {
       const tm = teamById(S.activeConex.slice(5));
       const cnt = conexesForTeam(tm.id).length;
-      sw.innerHTML = `${roTeam ? ICON.lock : ICON.conex}<span class="team-switch-name">${esc(tm.name)}</span><span class="conex-pill">${cnt} CONEX</span>${ICON.chevDown}`;
+      sw.innerHTML = `${roTeam ? ICON.lock : ICON.conex}<span class="team-switch-name">${esc(teamDisplayName(tm))}</span><span class="conex-pill">${cnt} CONEX</span>${ICON.chevDown}`;
     } else {
       const cx = conexById(S.activeConex);
       const tm = teamById(cx.teamId);
-      sw.innerHTML = `${roTeam ? ICON.lock : ICON.conex}<span class="team-switch-name">${esc(tm.name)}</span><span class="conex-pill">${esc(cx.name)}</span>${ICON.chevDown}`;
+      sw.innerHTML = `${roTeam ? ICON.lock : ICON.conex}<span class="team-switch-name">${esc(teamDisplayName(tm))}</span><span class="conex-pill">${esc(cx.name)}</span>${ICON.chevDown}`;
     }
 
     const allBtn = $('#teamAllBtn');
@@ -375,7 +384,7 @@
       <div class="readonly-banner">
         <div class="readonly-banner-left">
           ${ICON.lock}
-          <span>View only · Owned by ${esc(roTeam.name)}</span>
+          <span>View only · Owned by ${esc(teamDisplayName(roTeam))}</span>
         </div>
         <button type="button" class="btn btn-sm btn-outline" data-unlock-team="${esc(roTeam.id)}">Unlock</button>
       </div>`;
@@ -1217,7 +1226,7 @@
       const boxes = conexesForTeam(t.id);
       const isMine = t.id === S.myTeamId;
       const isUnlocked = unlockedTeams.has(t.id);
-      body += `<div class="section-div" style="margin-top:var(--space-2)">${esc(t.name)}${isMine ? ' (My Team)' : (isUnlocked ? ' (Unlocked)' : ' · View only')}</div>`;
+      body += `<div class="section-div" style="margin-top:var(--space-2)">${esc(teamDisplayName(t))}${isMine ? ' (My Team)' : (isUnlocked ? ' (Unlocked)' : ' · View only')}</div>`;
 
       if (boxes.length > 1) {
         const teamItemCnt = S.items.filter((i) => boxes.some((b) => b.id === i.conexId)).length;
@@ -1225,7 +1234,7 @@
         body += `
           <button type="button" class="team-option ${active ? 'is-active' : ''}" data-pick-conex="team:${esc(t.id)}">
             <div class="team-option-copy">
-              <div class="team-option-title"><span>All ${esc(t.name)}</span><span class="conex-pill">${boxes.length} CONEX</span></div>
+              <div class="team-option-title"><span>All ${esc(teamDisplayName(t))}</span><span class="conex-pill">${boxes.length} CONEX</span></div>
               <div class="team-option-meta">${teamItemCnt} parts across ${boxes.map((b) => b.name).join(' & ')}</div>
             </div>
             ${active ? ICON.check : ''}
