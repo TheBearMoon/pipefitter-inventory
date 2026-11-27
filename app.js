@@ -67,10 +67,12 @@
     'U-Bolts': ['Pipe size', 'e.g. 2" Pipe', 'Finish', 'e.g. Hot-Dip Galv', 'Rod / Thread', 'e.g. 3/8" Rod'],
     'J-Bolts': ['Diameter × Length', 'e.g. 1/2" × 12"', 'Finish', 'e.g. Hot-Dip Galv', 'Hook / Thread', 'e.g. 3" Thread'],
     'Pipe Plugs': ['Thread size', 'e.g. 1/2" NPT', 'Material', 'e.g. 316 Stainless', 'Head style', 'e.g. Hex Head'],
-    'Valves': ['Size', 'e.g. 2" NPT', 'Body material', 'e.g. 316 Stainless', 'Type / Rating', 'e.g. Ball, 1000 WOG']
+    'Valves': ['Size', 'e.g. 2" NPT', 'Body material', 'e.g. 316 Stainless', 'Type / Rating', 'e.g. Ball, 1000 WOG'],
+    'Supports': ['Pipe size', 'e.g. 4" Pipe', 'Material / Finish', 'e.g. Carbon Steel / HDG', 'Type', 'e.g. Pipe Shoe / Saddle'],
+    'Guides': ['Pipe size', 'e.g. 4" Pipe', 'Material / Finish', 'e.g. Carbon Steel', 'Type', 'e.g. Welded Pipe Guide']
   };
   const DEF_SPEC = ['Size', 'e.g. 1"', 'Material', 'e.g. Carbon steel', 'Type / Rating', 'e.g. Standard'];
-  const DEF_CATS = ['Gaskets', 'Bolts', 'U-Bolts', 'J-Bolts', 'Pipe Plugs', 'Valves'];
+  const DEF_CATS = ['Bolts', 'Gaskets', 'Valves', 'U-Bolts', 'J-Bolts', 'Supports', 'Guides', 'Pipe Plugs'];
   const UNITS = ['ea', 'box', 'pack', 'set', 'ft', 'bag'];
   const SORT_LABELS = {
     name: 'A–Z',
@@ -101,6 +103,7 @@
     items: [],
     log: [],
     cats: DEF_CATS.slice(),
+    catsCustomOrder: false,
     teams: DEFAULT_TEAMS.map((t) => ({ ...t })),
     conexes: DEFAULT_CONEXES.map((c) => ({ ...c })),
     myTeamId: 'team-1',       // Team using this device (editable without unlocking)
@@ -228,6 +231,17 @@
       changed = true;
     }
     if (typeof S.pin !== 'string') { S.pin = ''; changed = true; }
+    if (!Array.isArray(S.cats) || !S.cats.length) {
+      S.cats = DEF_CATS.slice();
+      changed = true;
+    } else if (!S.catsCustomOrder) {
+      const extras = S.cats.filter((c) => !DEF_CATS.includes(c));
+      const nextCats = [...DEF_CATS, ...extras];
+      if (nextCats.length !== S.cats.length || nextCats.some((c, idx) => S.cats[idx] !== c)) {
+        S.cats = nextCats;
+        changed = true;
+      }
+    }
 
     const defaultConexId = S.conexes[0].id;
     S.items.forEach((i) => {
@@ -2645,13 +2659,133 @@
     } catch (_) { toast('Could not copy automatically'); }
   }
 
+  // ---------- Hold-and-Drag Category Pill Reordering ----------
+  let suppressCatClickUntil = 0;
+  (() => {
+    const strip = $('#pills');
+    if (!strip) return;
+    let holdTimer = null;
+    let draggingEl = null;
+    let dragPointerId = null;
+    let startX = 0;
+    let startY = 0;
+    let orderChanged = false;
+
+    const getDraggablePills = () => Array.from(strip.querySelectorAll('.cat-pill[data-cat]')).filter((el) => el.dataset.cat !== 'All');
+
+    const cleanup = () => {
+      clearTimeout(holdTimer);
+      holdTimer = null;
+      if (draggingEl) {
+        draggingEl.classList.remove('is-dragging');
+        if (dragPointerId !== null) {
+          try { draggingEl.releasePointerCapture(dragPointerId); } catch (_) {}
+        }
+        strip.classList.remove('is-reordering');
+        suppressCatClickUntil = Date.now() + 350;
+        if (orderChanged) {
+          S.cats = getDraggablePills().map((el) => el.dataset.cat);
+          S.catsCustomOrder = true;
+          save();
+          toast('Category order saved');
+        }
+      }
+      draggingEl = null;
+      dragPointerId = null;
+      orderChanged = false;
+    };
+
+    strip.addEventListener('contextmenu', (e) => {
+      if (e.target.closest('.cat-pill[data-cat]')) e.preventDefault();
+    });
+
+    strip.addEventListener('pointerdown', (e) => {
+      if (e.button && e.button !== 0) return;
+      const pill = e.target.closest('.cat-pill[data-cat]');
+      if (!pill || pill.dataset.cat === 'All') return;
+      startX = e.clientX;
+      startY = e.clientY;
+      dragPointerId = e.pointerId;
+      orderChanged = false;
+      clearTimeout(holdTimer);
+      holdTimer = setTimeout(() => {
+        draggingEl = pill;
+        draggingEl.classList.add('is-dragging');
+        strip.classList.add('is-reordering');
+        try { draggingEl.setPointerCapture(dragPointerId); } catch (_) {}
+        if (navigator.vibrate) try { navigator.vibrate(18); } catch (_) {}
+      }, 280);
+    });
+
+    const handleMove = (clientX, clientY, e) => {
+      if (holdTimer && !draggingEl) {
+        if (Math.hypot(clientX - startX, clientY - startY) > 8) {
+          clearTimeout(holdTimer);
+          holdTimer = null;
+        }
+        return;
+      }
+      if (!draggingEl) return;
+      if (e && e.cancelable) e.preventDefault();
+
+      // Gentle auto-scroll near strip edges
+      const stripRect = strip.getBoundingClientRect();
+      if (clientX < stripRect.left + 36) strip.scrollLeft -= 10;
+      else if (clientX > stripRect.right - 36) strip.scrollLeft += 10;
+
+      const pills = getDraggablePills();
+      const curIdx = pills.indexOf(draggingEl);
+      if (curIdx < 0) return;
+
+      let targetIdx = curIdx;
+      for (let i = 0; i < pills.length; i++) {
+        if (pills[i] === draggingEl) continue;
+        const r = pills[i].getBoundingClientRect();
+        const mid = r.left + r.width / 2;
+        if (i < curIdx && clientX < mid) { targetIdx = i; break; }
+        if (i > curIdx && clientX > mid) { targetIdx = i; }
+      }
+
+      if (targetIdx !== curIdx) {
+        if (targetIdx < curIdx) {
+          strip.insertBefore(draggingEl, pills[targetIdx]);
+        } else {
+          strip.insertBefore(draggingEl, pills[targetIdx].nextSibling);
+        }
+        orderChanged = true;
+        if (navigator.vibrate) try { navigator.vibrate(6); } catch (_) {}
+      }
+    };
+
+    window.addEventListener('pointermove', (e) => {
+      if (!holdTimer && !draggingEl) return;
+      handleMove(e.clientX, e.clientY, e);
+    }, { passive: false });
+
+    strip.addEventListener('touchmove', (e) => {
+      if (!draggingEl) return;
+      if (e.cancelable) e.preventDefault();
+      const touch = e.touches[0];
+      if (touch) handleMove(touch.clientX, touch.clientY, e);
+    }, { passive: false });
+
+    window.addEventListener('pointerup', cleanup);
+    window.addEventListener('pointercancel', cleanup);
+    window.addEventListener('touchend', cleanup);
+  })();
+
   // ---------- Event Delegation ----------
   document.addEventListener('click', (e) => {
     const t = e.target.closest('button,[data-edit]');
     if (!t) return;
 
     if (t.dataset.v) { view = t.dataset.v; render(); window.scrollTo({ top: 0, behavior: 'instant' }); return; }
-    if (t.dataset.cat) { cat = t.dataset.cat; renderStock(); return; }
+    if (t.dataset.cat) {
+      if (Date.now() < suppressCatClickUntil) return;
+      cat = t.dataset.cat;
+      renderStock();
+      return;
+    }
     if (t.dataset.st) { statusFilter = t.dataset.st; renderStock(); return; }
     if (t.dataset.af) { actFilter = t.dataset.af; renderActivity(); return; }
     if (t.dataset.unlockTeam) { openUnlockTeam(t.dataset.unlockTeam); return; }
