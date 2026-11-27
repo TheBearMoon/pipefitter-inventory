@@ -354,8 +354,12 @@
     },
 
     async pushItem(item) {
-      if (!this.ready || !this.user) return;
-      await this.db.collection('items').doc(item.id).set(item, { merge: true });
+      if (!this.ready || !this.user || !item || !item.id) return;
+      const clean = {};
+      Object.keys(item).forEach((k) => {
+        if (item[k] !== undefined) clean[k] = item[k];
+      });
+      await this.db.collection('items').doc(clean.id).set(clean, { merge: true });
     },
 
     async deleteItem(itemId) {

@@ -1069,6 +1069,24 @@
     if (Cloud.ready && Cloud.user) Cloud.pushLog(entry).catch(() => {});
   }
 
+  function syncItemToCloud(item) {
+    if (!item || !Cloud.ready || !Cloud.user) return;
+    const cx = conexById(item.conexId);
+    const supId = (cx && cx.supervisorId) || item.supervisorId || (Cloud.mySupervisorId ? Cloud.mySupervisorId() : '') || '';
+    item.supervisorId = supId;
+    Cloud.pushItem({ ...item, supervisorId: supId }).catch((err) => {
+      console.error('Could not sync item to cloud:', err);
+      toast('Could not save to cloud — check connection or permissions');
+    });
+  }
+
+  function deleteItemFromCloud(itemId) {
+    if (!itemId || !Cloud.ready || !Cloud.user) return;
+    Cloud.deleteItem(itemId).catch((err) => {
+      console.error('Could not delete item from cloud:', err);
+    });
+  }
+
   function setQty(i, to, kind, note) {
     if (!canEditConex(i.conexId)) { toast('View only — you can only edit your own Conex'); return; }
     to = Math.max(0, Math.round(to));
@@ -1080,6 +1098,7 @@
     i.updated = Date.now();
     lastPopId = i.id;
     logIt(i, kind || 'adj', from, to, note);
+    syncItemToCloud(i);
     save();
     render();
     if (navigator.vibrate) try { navigator.vibrate(8); } catch (_) {}
@@ -1094,7 +1113,9 @@
 
     toast(msg, () => {
       i.qty = from;
+      i.updated = Date.now();
       S.log.splice(0, S.log.length - prevLog);
+      syncItemToCloud(i);
       save();
       render();
     });
@@ -1123,7 +1144,14 @@
       destItem.qty += qty;
       destItem.updated = Date.now();
     } else {
-      destItem = { ...srcItem, id: uid(), conexId: toConexId, qty, updated: Date.now() };
+      destItem = {
+        ...srcItem,
+        id: uid(),
+        conexId: toConexId,
+        supervisorId: destCx.supervisorId || srcItem.supervisorId || '',
+        qty,
+        updated: Date.now()
+      };
       delete destItem.sample;
       S.items.push(destItem);
       createdDest = true;
@@ -1131,17 +1159,24 @@
 
     lastPopId = srcItem.id;
     logIt(srcItem, 'xfer', prevSrcQty, srcItem.qty, note, { toConexId });
+    syncItemToCloud(srcItem);
+    syncItemToCloud(destItem);
     save();
     render();
     if (navigator.vibrate) try { navigator.vibrate(10); } catch (_) {}
 
     toast(`Transferred ${qty} ${srcItem.unit || 'ea'} to ${destCx.name}`, () => {
       srcItem.qty = prevSrcQty;
+      srcItem.updated = Date.now();
+      syncItemToCloud(srcItem);
       if (createdDest) {
         const idx = S.items.findIndex((x) => x.id === destItem.id);
         if (idx >= 0) S.items.splice(idx, 1);
+        deleteItemFromCloud(destItem.id);
       } else {
         destItem.qty = prevDestQty;
+        destItem.updated = Date.now();
+        syncItemToCloud(destItem);
       }
       S.log.splice(0, S.log.length - prevLogLen);
       save();
@@ -2157,10 +2192,11 @@
         const it = S.items[idx];
         S.items.splice(idx, 1);
         logIt(it, 'del', it.qty, 0);
+        deleteItemFromCloud(it.id);
         save();
         closeSheet();
         render();
-        toast(`Deleted ${it.name}`, () => { S.items.splice(idx, 0, it); S.log.shift(); save(); render(); });
+        toast(`Deleted ${it.name}`, () => { S.items.splice(idx, 0, it); S.log.shift(); syncItemToCloud(it); save(); render(); });
       };
     }
 
@@ -2171,9 +2207,12 @@
     const nameEl = $('#f-name');
     const name = nameEl.value.trim();
     if (!name) { $('#fg-name').classList.add('has-error'); nameEl.focus(); return; }
+    const targetConexId = $('#f-conex').value;
+    const targetCx = conexById(targetConexId);
     const data = {
       name,
-      conexId: $('#f-conex').value,
+      conexId: targetConexId,
+      supervisorId: (targetCx && targetCx.supervisorId) || (Cloud.mySupervisorId ? Cloud.mySupervisorId() : '') || '',
       category: $('#f-cat').value,
       bin: $('#f-bin').value.trim(),
       size: $('#f-size').value.trim(),
@@ -2194,11 +2233,13 @@
       Object.assign(it, data);
       delete it.sample;
       if (from !== data.qty) logIt(it, 'set', from, data.qty, 'Edited');
+      syncItemToCloud(it);
       toast('Changes saved');
     } else {
       const it = { id: uid(), ...data };
       S.items.push(it);
       logIt(it, 'add', 0, it.qty);
+      syncItemToCloud(it);
       toast(`${name} added`);
     }
     save();
@@ -2394,6 +2435,8 @@
 
     $('#cs-cancel').onclick = closeSheet;
     $('#cs-ok').onclick = () => {
+      const sampleItems = S.items.filter((i) => i.sample);
+      sampleItems.forEach((it) => deleteItemFromCloud(it.id));
       S.items = S.items.filter((i) => !i.sample);
       S.log = S.log.filter((l) => S.items.some((i) => i.id === l.id));
       save();
