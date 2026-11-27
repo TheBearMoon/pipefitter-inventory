@@ -9,7 +9,11 @@
 
   const ICON = {
     box: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 7.5L12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5L12 12l9-4.5M12 12v9"/></svg>',
-    conex: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5.5" width="19" height="13" rx="2"/><path d="M7 5.5v13M12 5.5v13M17 5.5v13"/></svg>',
+    conex: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8.5L13.5 4L22 7.5V16L10.5 20.5L2 17V8.5Z"/><path d="M2 8.5L10.5 12L22 7.5"/><path d="M10.5 12V20.5"/><path d="M14.3 10.5V19"/><path d="M18.2 9V17.5"/><path d="M6.25 10.25V18.75"/></svg>',
+    user: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 20a7.5 7.5 0 0115 0"/></svg>',
+    crew: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 19.5a6.5 6.5 0 0113 0"/><circle cx="17" cy="9.2" r="2.7"/><path d="M16.2 14.8a5.2 5.2 0 015.3 4.7"/></svg>',
+    hardhat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2 16.5h20"/><path d="M4 16.5v-1.8a8 8 0 0116 0v1.8"/><path d="M10 6.8V12.5M14 6.8V12.5"/><path d="M10 6.8a2 2 0 014 0"/></svg>',
+    storage: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.66 3.58 3 8 3s8-1.34 8-3V6"/><path d="M4 12v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/></svg>',
     lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>',
     firebase: '<svg viewBox="0 0 24 24" fill="none"><path d="M4.8 18.2L7.4 3.4c.1-.6.9-.7 1.2-.2l2.9 5.5 2.3-4.3c.3-.5 1-.4 1.2.1l4.2 13.7-6.8 3.8c-.5.3-1.1.3-1.6 0l-6-3.8z" fill="#FFA000"/><path d="M19.2 18.2L15 4.5c-.2-.5-.9-.6-1.2-.1L4.8 18.2l6 3.8c.5.3 1.1.3 1.6 0l6.8-3.8z" fill="#FFCA28"/><path d="M11.5 8.7L8.6 3.2c-.3-.5-1.1-.4-1.2.2L4.8 18.2l6.7-9.5z" fill="#F57C00"/></svg>',
     unlock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 017.5-2"/></svg>',
@@ -764,6 +768,10 @@
 
     const roleLabel = Cloud.profile?.role === 'admin' ? 'Main Admin'
       : Cloud.profile?.role === 'supervisor' ? 'Supervisor' : 'Crew';
+    const accountIcon = !Cloud.user || !Cloud.profile ? ICON.user
+      : Cloud.profile.role === 'admin' ? ICON.shield
+      : Cloud.profile.role === 'supervisor' ? ICON.hardhat
+      : ICON.user;
     const cloudTitle = !Cloud.configured
       ? 'Not connected (Local offline only)'
       : Cloud.user && Cloud.profile
@@ -799,7 +807,7 @@
             const partCnt = S.items.filter((i) => supBoxIds.has(i.conexId)).length;
             return `
               <button type="button" class="list-item" data-opensup="${esc(sup.uid)}">
-                <span class="li-icon">${ICON.shield}</span>
+                <span class="li-icon">${ICON.hardhat}</span>
                 <span class="li-text">
                   <span class="li-label">${esc(sup.displayName || sup.username)} <span class="conex-pill" style="margin-left:6px">${supTeams.length} TEAM${supTeams.length === 1 ? '' : 'S'} · ${supBoxes.length} CONEX</span></span>
                   <span class="li-desc">@${esc(sup.username || '')} · ${partCnt} part${partCnt === 1 ? '' : 's'} · Tap to view teams &amp; Conex boxes</span>
@@ -829,7 +837,7 @@
             const cnt = S.items.filter((i) => boxIds.has(i.conexId)).length;
             return `
               <button type="button" class="list-item" data-editteam="${esc(tm.id)}">
-                <span class="li-icon">${ICON.shield}</span>
+                <span class="li-icon">${ICON.crew}</span>
                 <span class="li-text">
                   <span class="li-label">${esc(teamDisplayName(tm))} <span class="conex-pill" style="margin-left:6px">${boxes.length} CONEX</span></span>
                   <span class="li-desc">${cnt} part${cnt === 1 ? '' : 's'}${canManageYard() ? ' · Tap to edit or delete team' : ' · View only'}</span>
@@ -880,7 +888,7 @@
         <div class="panel">
           <h2 class="panel-title">Cloud Sync &amp; Accounts (Firebase Spark)</h2>
           <button type="button" class="list-item" id="cloudPrimaryBtn">
-            <span class="li-icon">${ICON.shield}</span>
+            <span class="li-icon">${accountIcon}</span>
             <span class="li-text">
               <span class="li-label"><strong>${cloudTitle}</strong></span>
               <span class="li-desc">${cloudDesc}</span>
@@ -998,7 +1006,7 @@
         <div class="panel">
           <h2 class="panel-title">${isMainAdmin() ? 'Device &amp; Reset' : 'Device &amp; Storage'}</h2>
           <div class="list-item">
-            <span class="li-icon">${ICON.shield}</span>
+            <span class="li-icon">${ICON.storage}</span>
             <span class="li-text">
               <span class="li-label">Offline storage</span>
               <span class="li-desc">${engineLabel} · ${persisted ? 'Protected' : 'Back up regularly'} · ${S.conexes.length} Conex · ${S.items.length} part${S.items.length === 1 ? '' : 's'}</span>
@@ -1500,7 +1508,7 @@
         return `
           <div class="sd-group">
             <button type="button" class="list-item sd-team-row" data-sd-team="${esc(tm.id)}">
-              <span class="li-icon">${ICON.shield}</span>
+              <span class="li-icon">${ICON.crew}</span>
               <span class="li-text">
                 <span class="li-label"><strong>${esc(teamDisplayName(tm))}</strong> <span class="conex-pill" style="margin-left:6px">${boxes.length} CONEX</span></span>
                 <span class="li-desc">${teamParts} part${teamParts === 1 ? '' : 's'} · Tap to edit or delete team</span>
@@ -2797,10 +2805,13 @@
       const roleLbl = Cloud.profile.role === 'admin'
         ? 'Main Admin'
         : Cloud.profile.role === 'supervisor' ? 'Supervisor' : 'Crew';
+      const roleIc = Cloud.profile.role === 'admin'
+        ? ICON.shield
+        : Cloud.profile.role === 'supervisor' ? ICON.hardhat : ICON.user;
       openSheet('Account', `
         <div class="panel" style="margin-bottom:14px">
           <div class="list-item">
-            <span class="li-icon">${ICON.shield}</span>
+            <span class="li-icon">${roleIc}</span>
             <span class="li-text">
               <span class="li-label"><strong>${esc(Cloud.profile.displayName)}</strong> (${esc(Cloud.profile.username)})</span>
               <span class="li-desc">Role: ${roleLbl}${Cloud.profile.role === 'crew' ? ` · Team: ${esc(teamDisplayName(Cloud.profile.teamId) || 'Unassigned')}` : ''}</span>
