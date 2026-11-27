@@ -2271,3 +2271,47 @@ button.list-item:active {
   }
 }
 
+/* View-Only Team Lock Banner */
+.readonly-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 10px 14px;
+  margin-bottom: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-warn-soft);
+  border: 1px solid rgba(180, 83, 9, 0.22);
+  color: var(--color-warn);
+  font-size: var(--text-xs);
+  font-weight: 650;
+}
+
+.readonly-banner-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.readonly-banner svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.item-card.is-locked .stepper-wrap {
+  opacity: 0.7;
+}
+
+.lock-pill {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--radius-xs);
+  background: var(--color-warn-soft);
+  color: var(--color-warn);
+  white-space: nowrap;
+}
+
+

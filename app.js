@@ -10,6 +10,8 @@
   const ICON = {
     box: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 7.5L12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5L12 12l9-4.5M12 12v9"/></svg>',
     conex: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5.5" width="19" height="13" rx="2"/><path d="M7 5.5v13M12 5.5v13M17 5.5v13"/></svg>',
+    lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>',
+    unlock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 017.5-2"/></svg>',
     chevDown: '<svg class="team-switch-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
     tag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 12V3h9l9 9-9 9z"/><circle cx="7.5" cy="7.5" r="1.4"/></svg>',
     dl: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"/></svg>',
@@ -32,7 +34,6 @@
     xfer: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3l4 4-4 4"/><path d="M3 7h18"/><path d="M7 21l-4-4 4-4"/><path d="M21 17H3"/></svg>'
   };
 
-  // Default built-in studio white-background hardware photo library (editable in Tools)
   const DEFAULT_PHOTO_LIB = [
     { id: 'green-gasket', label: 'Green', src: './assets/parts/green-gasket.jpg', builtin: true },
     { id: 'grey-gasket', label: 'Grey', src: './assets/parts/grey-gasket.jpg', builtin: true },
@@ -46,8 +47,13 @@
   ];
 
   const DEFAULT_TEAMS = [
-    { id: 'team-1', name: 'Crew A', conex: 'Conex 1' },
-    { id: 'team-2', name: 'Crew B', conex: 'Conex 2' }
+    { id: 'team-1', name: 'Crew A' },
+    { id: 'team-2', name: 'Crew B' }
+  ];
+
+  const DEFAULT_CONEXES = [
+    { id: 'conex-1', name: 'Conex 1', teamId: 'team-1' },
+    { id: 'conex-2', name: 'Conex 2', teamId: 'team-2' }
   ];
 
   const SPEC = {
@@ -75,19 +81,24 @@
     log: [],
     cats: DEF_CATS.slice(),
     teams: DEFAULT_TEAMS.map((t) => ({ ...t })),
-    activeTeam: 'team-1',
+    conexes: DEFAULT_CONEXES.map((c) => ({ ...c })),
+    myTeamId: 'team-1',       // Team using this device (editable without unlocking)
+    activeConex: 'conex-1',   // 'conex-1' | 'team:<id>' | 'all'
+    pin: '',                  // Optional 4-digit supervisor PIN for unlocking other teams & whole-Conex transfers
     photoLib: DEFAULT_PHOTO_LIB.map((p) => ({ ...p })),
     theme: null,
     sort: 'name',
     seeded: false,
     lastBackup: null
   };
+
   let view = 'stock';
   let cat = 'All';
   let statusFilter = 'all';
   let actFilter = 'all';
   let query = '';
   let lastPopId = null;
+  let unlockedTeams = new Set(); // Session-only unlock for supervisor edits on other teams
 
   // ---------- Offline-First Storage (IndexedDB -> localStorage -> Memory) ----------
   let db = null;
@@ -144,22 +155,25 @@
 
   function seed() {
     S.teams = DEFAULT_TEAMS.map((t) => ({ ...t }));
-    S.activeTeam = 'team-1';
+    S.conexes = DEFAULT_CONEXES.map((c) => ({ ...c }));
+    S.myTeamId = 'team-1';
+    S.activeConex = 'conex-1';
+    S.pin = '';
     S.photoLib = DEFAULT_PHOTO_LIB.map((p) => ({ ...p }));
-    const mk = (name, category, size, material, type, bin, qty, min, unit, sku, photo, teamId) => ({
+    const mk = (name, category, size, material, type, bin, qty, min, unit, sku, photo, conexId) => ({
       id: uid(), name, category, size, material, type, bin, qty, min, unit, sku,
-      notes: '', photo, teamId, updated: Date.now(), sample: true
+      notes: '', photo, conexId, updated: Date.now(), sample: true
     });
     S.items = [
-      mk('Green Fiber Flange Gasket', 'Gaskets', '4"', 'Green Compressed Fiber', '150# Full Face', 'A-1', 24, 10, 'ea', 'GFG-4-150', './assets/parts/green-gasket.jpg', 'team-1'),
-      mk('Grey Ring Gasket', 'Gaskets', '4"', 'Flexible Graphite', '150# RF Ring', 'A-2', 16, 10, 'ea', 'GRG-4-150', './assets/parts/grey-gasket.jpg', 'team-1'),
-      mk('B7 Stud Bolt w/ 2H Nuts', 'Bolts', '3/4" × 4-1/2"', 'ASTM A193 B7', 'Black Oxide', 'B-1', 6, 20, 'ea', 'B7-34-412', './assets/parts/b7-stud-bolt.jpg', 'team-1'),
-      mk('L7 Low-Temp Stud Bolt', 'Bolts', '3/4" × 4-1/2"', 'ASTM A320 L7', 'Alloy Steel', 'B-2', 32, 16, 'ea', 'L7-34-412', './assets/parts/l7-stud-bolt.jpg', 'team-2'),
-      mk('B8 Stainless Stud Bolt', 'Bolts', '5/8" × 3-3/4"', '304 Stainless (B8)', 'Heavy Hex Nuts', 'B-3', 14, 12, 'ea', 'B8-58-334', './assets/parts/b8-stainless-stud-bolt.jpg', 'team-1'),
-      mk('Galvanized Pipe U-Bolt', 'U-Bolts', '2" Pipe', 'Hot-Dip Galv', '3/8" Rod', 'C-2', 40, 15, 'ea', 'UB-2-HDG', './assets/parts/u-bolt.jpg', 'team-2'),
-      mk('J-Bolt Anchor', 'J-Bolts', '1/2" × 12"', 'Hot-Dip Galv', '3" Thread', 'C-5', 0, 10, 'ea', 'JB-12-12', './assets/parts/j-bolt.jpg', 'team-1'),
-      mk('Hex Head Pipe Plug', 'Pipe Plugs', '1/2" NPT', '316 Stainless', 'Hex Head', 'D-1', 18, 8, 'ea', 'PP-12-316', './assets/parts/pipe-plug.jpg', 'team-1'),
-      mk('Full Port Ball Valve', 'Valves', '2" NPT', '316 Stainless', '1000 WOG', 'E-4', 3, 4, 'ea', 'BV-2-316', './assets/parts/ball-valve.jpg', 'team-2')
+      mk('Green Fiber Flange Gasket', 'Gaskets', '4"', 'Green Compressed Fiber', '150# Full Face', 'A-1', 24, 10, 'ea', 'GFG-4-150', './assets/parts/green-gasket.jpg', 'conex-1'),
+      mk('Grey Ring Gasket', 'Gaskets', '4"', 'Flexible Graphite', '150# RF Ring', 'A-2', 16, 10, 'ea', 'GRG-4-150', './assets/parts/grey-gasket.jpg', 'conex-1'),
+      mk('B7 Stud Bolt w/ 2H Nuts', 'Bolts', '3/4" × 4-1/2"', 'ASTM A193 B7', 'Black Oxide', 'B-1', 6, 20, 'ea', 'B7-34-412', './assets/parts/b7-stud-bolt.jpg', 'conex-1'),
+      mk('L7 Low-Temp Stud Bolt', 'Bolts', '3/4" × 4-1/2"', 'ASTM A320 L7', 'Alloy Steel', 'B-2', 32, 16, 'ea', 'L7-34-412', './assets/parts/l7-stud-bolt.jpg', 'conex-2'),
+      mk('B8 Stainless Stud Bolt', 'Bolts', '5/8" × 3-3/4"', '304 Stainless (B8)', 'Heavy Hex Nuts', 'B-3', 14, 12, 'ea', 'B8-58-334', './assets/parts/b8-stainless-stud-bolt.jpg', 'conex-1'),
+      mk('Galvanized Pipe U-Bolt', 'U-Bolts', '2" Pipe', 'Hot-Dip Galv', '3/8" Rod', 'C-2', 40, 15, 'ea', 'UB-2-HDG', './assets/parts/u-bolt.jpg', 'conex-2'),
+      mk('J-Bolt Anchor', 'J-Bolts', '1/2" × 12"', 'Hot-Dip Galv', '3" Thread', 'C-5', 0, 10, 'ea', 'JB-12-12', './assets/parts/j-bolt.jpg', 'conex-1'),
+      mk('Hex Head Pipe Plug', 'Pipe Plugs', '1/2" NPT', '316 Stainless', 'Hex Head', 'D-1', 18, 8, 'ea', 'PP-12-316', './assets/parts/pipe-plug.jpg', 'conex-1'),
+      mk('Full Port Ball Valve', 'Valves', '2" NPT', '316 Stainless', '1000 WOG', 'E-4', 3, 4, 'ea', 'BV-2-316', './assets/parts/ball-valve.jpg', 'conex-2')
     ];
     S.seeded = true;
   }
@@ -170,37 +184,37 @@
       S.teams = DEFAULT_TEAMS.map((t) => ({ ...t }));
       changed = true;
     }
-    if (!S.activeTeam || (S.activeTeam !== 'all' && !S.teams.some((t) => t.id === S.activeTeam))) {
-      S.activeTeam = S.teams[0].id;
+    // Migrate older combined { id, name, conex } teams into separate S.conexes
+    if (!Array.isArray(S.conexes) || !S.conexes.length) {
+      S.conexes = S.teams.map((t, idx) => ({
+        id: 'conex-' + (idx + 1),
+        name: t.conex || `Conex ${idx + 1}`,
+        teamId: t.id
+      }));
+      changed = true;
+    }
+    if (!S.myTeamId || !S.teams.some((t) => t.id === S.myTeamId)) {
+      S.myTeamId = S.teams[0].id;
+      changed = true;
+    }
+    if (!S.activeConex || (S.activeConex !== 'all' && !S.activeConex.startsWith('team:') && !S.conexes.some((c) => c.id === S.activeConex))) {
+      const firstMine = S.conexes.find((c) => c.teamId === S.myTeamId) || S.conexes[0];
+      S.activeConex = firstMine.id;
       changed = true;
     }
     if (!Array.isArray(S.photoLib)) {
       S.photoLib = DEFAULT_PHOTO_LIB.map((p) => ({ ...p }));
       changed = true;
     }
-    const defaultTeamId = S.teams[0].id;
-    const matchPhoto = (i) => {
-      const hay = (i.name + ' ' + i.material + ' ' + i.category).toLowerCase();
-      if (hay.includes('green') && hay.includes('gasket')) return './assets/parts/green-gasket.jpg';
-      if (hay.includes('gasket')) return './assets/parts/grey-gasket.jpg';
-      if (hay.includes('b8')) return './assets/parts/b8-stainless-stud-bolt.jpg';
-      if (hay.includes('l7')) return './assets/parts/l7-stud-bolt.jpg';
-      if (hay.includes('u-bolt') || hay.includes('u bolt')) return './assets/parts/u-bolt.jpg';
-      if (hay.includes('j-bolt') || hay.includes('j bolt')) return './assets/parts/j-bolt.jpg';
-      if (hay.includes('bolt') || hay.includes('stud')) return './assets/parts/b7-stud-bolt.jpg';
-      if (hay.includes('plug')) return './assets/parts/pipe-plug.jpg';
-      if (hay.includes('valve')) return './assets/parts/ball-valve.jpg';
-      return '';
-    };
+    if (typeof S.pin !== 'string') { S.pin = ''; changed = true; }
+
+    const defaultConexId = S.conexes[0].id;
     S.items.forEach((i) => {
       if (i.min == null) { i.min = 0; changed = true; }
-      if (!i.teamId || !S.teams.some((t) => t.id === i.teamId)) {
-        i.teamId = defaultTeamId;
+      if (!i.conexId || !S.conexes.some((c) => c.id === i.conexId)) {
+        const byTeam = i.teamId ? S.conexes.find((c) => c.teamId === i.teamId) : null;
+        i.conexId = byTeam ? byTeam.id : defaultConexId;
         changed = true;
-      }
-      if (i.sample && !i.photo) {
-        const p = matchPhoto(i);
-        if (p) { i.photo = p; changed = true; }
       }
     });
     if (changed) save();
@@ -208,13 +222,49 @@
 
   // ---------- Helpers ----------
   const teamById = (id) => S.teams.find((t) => t.id === id) || S.teams[0];
-  const activeTeamObj = () => (S.activeTeam === 'all' ? null : teamById(S.activeTeam));
-  const teamItems = () => (S.activeTeam === 'all' ? S.items : S.items.filter((i) => i.teamId === S.activeTeam));
+  const conexById = (id) => S.conexes.find((c) => c.id === id) || S.conexes[0];
+  const conexesForTeam = (tid) => S.conexes.filter((c) => c.teamId === tid);
+  const myTeamObj = () => teamById(S.myTeamId);
+
+  function canEditConex(conexId) {
+    const cx = conexById(conexId);
+    if (!cx) return false;
+    return cx.teamId === S.myTeamId || unlockedTeams.has(cx.teamId);
+  }
+
+  function editableConexes() {
+    return S.conexes.filter((c) => canEditConex(c.id));
+  }
+
+  function activeScopeConexIds() {
+    if (S.activeConex === 'all') return S.conexes.map((c) => c.id);
+    if (S.activeConex.startsWith('team:')) {
+      const tid = S.activeConex.slice(5);
+      return conexesForTeam(tid).map((c) => c.id);
+    }
+    return [S.activeConex];
+  }
+
+  function scopedItems() {
+    const ids = new Set(activeScopeConexIds());
+    return S.items.filter((i) => ids.has(i.conexId));
+  }
+
+  function activeReadOnlyTeam() {
+    if (S.activeConex === 'all') return null;
+    if (S.activeConex.startsWith('team:')) {
+      const tid = S.activeConex.slice(5);
+      return tid !== S.myTeamId && !unlockedTeams.has(tid) ? teamById(tid) : null;
+    }
+    const cx = conexById(S.activeConex);
+    return cx && !canEditConex(cx.id) ? teamById(cx.teamId) : null;
+  }
+
   const statusOf = (i) => (i.qty <= 0 ? 'out' : (i.min > 0 && i.qty <= i.min ? 'low' : 'ok'));
   const statusRank = (i) => ({ out: 0, low: 1, ok: 2 }[statusOf(i)]);
   const specLine = (i) => [i.size, i.material, i.type].filter(Boolean).join(' · ');
   const needQty = (i) => Math.max((i.min || 0) * 2 - i.qty, (i.min || 0) - i.qty, 1);
-  const lowItems = (items = teamItems()) => items
+  const lowItems = (items = scopedItems()) => items
     .filter((i) => statusOf(i) !== 'ok')
     .sort((a, b) => statusRank(a) - statusRank(b) || (a.qty - a.min) - (b.qty - b.min));
 
@@ -236,7 +286,7 @@
     const seen = [];
     for (const l of S.log) {
       const note = (l.note || '').trim();
-      if (note && !['Edited', 'Restocked'].includes(note) && !note.startsWith('→ ') && !seen.includes(note)) {
+      if (note && !['Edited', 'Restocked'].includes(note) && !seen.includes(note)) {
         seen.push(note);
         if (seen.length >= 4) break;
       }
@@ -258,9 +308,7 @@
           c.height = Math.round(img.height * sc);
           c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
           cb(c.toDataURL('image/jpeg', 0.8));
-        } catch (_) {
-          cb(r.result);
-        }
+        } catch (_) { cb(r.result); }
       };
       img.src = r.result;
     };
@@ -287,18 +335,37 @@
     bar.classList.toggle('hidden', view === 'tools');
     if (view === 'tools') return;
 
-    const cur = activeTeamObj();
     const sw = $('#teamSwitchBtn');
-    if (cur) {
-      sw.innerHTML = `${ICON.conex}<span class="team-switch-name">${esc(cur.name)}</span><span class="conex-pill">${esc(cur.conex)}</span>${ICON.chevDown}`;
+    const roTeam = activeReadOnlyTeam();
+    if (S.activeConex === 'all') {
+      sw.innerHTML = `${ICON.conex}<span class="team-switch-name">All Conex</span><span class="conex-pill">${S.conexes.length} BOXES</span>${ICON.chevDown}`;
+    } else if (S.activeConex.startsWith('team:')) {
+      const tm = teamById(S.activeConex.slice(5));
+      const cnt = conexesForTeam(tm.id).length;
+      sw.innerHTML = `${roTeam ? ICON.lock : ICON.conex}<span class="team-switch-name">${esc(tm.name)}</span><span class="conex-pill">${cnt} CONEX</span>${ICON.chevDown}`;
     } else {
-      sw.innerHTML = `${ICON.conex}<span class="team-switch-name">All Teams</span><span class="conex-pill">${S.teams.length} CONEX</span>${ICON.chevDown}`;
+      const cx = conexById(S.activeConex);
+      const tm = teamById(cx.teamId);
+      sw.innerHTML = `${roTeam ? ICON.lock : ICON.conex}<span class="team-switch-name">${esc(tm.name)}</span><span class="conex-pill">${esc(cx.name)}</span>${ICON.chevDown}`;
     }
 
     const allBtn = $('#teamAllBtn');
-    allBtn.classList.toggle('hidden', S.teams.length <= 1);
-    allBtn.classList.toggle('is-active', S.activeTeam === 'all');
-    allBtn.setAttribute('aria-pressed', String(S.activeTeam === 'all'));
+    allBtn.classList.toggle('hidden', S.conexes.length <= 1);
+    allBtn.classList.toggle('is-active', S.activeConex === 'all');
+    allBtn.setAttribute('aria-pressed', String(S.activeConex === 'all'));
+  }
+
+  function readOnlyBannerHtml() {
+    const roTeam = activeReadOnlyTeam();
+    if (!roTeam) return '';
+    return `
+      <div class="readonly-banner">
+        <div class="readonly-banner-left">
+          ${ICON.lock}
+          <span>View only · Owned by ${esc(roTeam.name)}</span>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline" data-unlock-team="${esc(roTeam.id)}">Unlock</button>
+      </div>`;
   }
 
   function render() {
@@ -315,7 +382,7 @@
     $('#stockHead').classList.toggle('hidden', view !== 'stock');
     renderTeamBar();
 
-    const scoped = teamItems();
+    const scoped = scopedItems();
     const lows = lowItems(scoped);
     const n = lows.length;
     ['#roDot', '#roDotDesktop'].forEach((sel) => {
@@ -326,10 +393,10 @@
       }
     });
 
-    const cur = activeTeamObj();
-    const scopeLogs = cur
-      ? S.log.filter((l) => l.teamId === cur.id || l.toTeamId === cur.id)
-      : S.log;
+    const ids = new Set(activeScopeConexIds());
+    const scopeLogs = S.activeConex === 'all'
+      ? S.log
+      : S.log.filter((l) => ids.has(l.conexId) || ids.has(l.toConexId));
 
     const stockSub = n
       ? `${scoped.length} part${scoped.length === 1 ? '' : 's'} · ${n} need${n === 1 ? 's' : ''} reorder`
@@ -339,7 +406,7 @@
       stock: ['Pipefitter Inventory', stockSub],
       reorder: ['Reorder List', n ? `${n} part${n === 1 ? '' : 's'} at or below minimum` : 'Everything above minimum'],
       activity: ['Activity Log', `${scopeLogs.length} recorded update${scopeLogs.length === 1 ? '' : 's'}`],
-      tools: ['Tools & Settings', 'Teams, photo library, categories & backup']
+      tools: ['Tools & Settings', 'Teams, Conex boxes, photo library & security']
     };
     $('#pageTitle').textContent = titles[view][0];
     $('#pageSub').textContent = titles[view][1];
@@ -349,7 +416,7 @@
   }
 
   function renderStock() {
-    const baseItems = teamItems();
+    const baseItems = scopedItems();
     const counts = {};
     baseItems.forEach((i) => { counts[i.category] = (counts[i.category] || 0) + 1; });
     const cats = ['All', ...S.cats];
@@ -379,8 +446,9 @@
     let items = scope.filter((i) => {
       if (statusFilter !== 'all' && statusOf(i) !== statusFilter) return false;
       if (!q) return true;
-      const tm = teamById(i.teamId);
-      return [i.name, i.size, i.material, i.type, i.bin, i.sku, i.category, i.notes, tm?.name, tm?.conex]
+      const cx = conexById(i.conexId);
+      const tm = cx ? teamById(cx.teamId) : null;
+      return [i.name, i.size, i.material, i.type, i.bin, i.sku, i.category, i.notes, tm?.name, cx?.name]
         .join(' ')
         .toLowerCase()
         .includes(q);
@@ -401,22 +469,22 @@
     lblEl.textContent = q ? `${items.length} match${items.length === 1 ? '' : 'es'}` : `${items.length} shown`;
     lblEl.classList.toggle('is-filtered', Boolean(q));
 
+    const banner = readOnlyBannerHtml();
     if (!items.length) {
       const hasAny = baseItems.length > 0;
-      const cur = activeTeamObj();
-      $('#list').innerHTML = `
+      $('#list').innerHTML = `${banner ? `<div style="grid-column:1/-1">${banner}</div>` : ''}
         <div class="empty-state" style="grid-column:1/-1">
           <div class="empty-icon">${ICON.box}</div>
-          <h3>${hasAny ? 'No matching parts' : (cur ? `${esc(cur.conex)} is empty` : 'Your inventory is empty')}</h3>
-          <p>${hasAny ? 'Try clearing your search or switching back to All categories and stock levels.' : `Add your first gasket, stud bolt, plug, or valve${cur ? ` to ${esc(cur.name)} (${esc(cur.conex)})` : ''}.`}</p>
+          <h3>${hasAny ? 'No matching parts' : 'No parts in this Conex'}</h3>
+          <p>${hasAny ? 'Try clearing your search or switching back to All categories and stock levels.' : 'Add your first gasket, stud bolt, plug, or valve to start tracking stock.'}</p>
           ${hasAny
             ? `<button type="button" class="btn btn-outline" id="clearFiltersBtn">Show all parts</button>`
-            : `<button type="button" class="btn btn-primary" id="emptyAddBtn">${ICON.plus}Add first item</button>`}
+            : (activeReadOnlyTeam() ? '' : `<button type="button" class="btn btn-primary" id="emptyAddBtn">${ICON.plus}Add first item</button>`)}
         </div>`;
       return;
     }
 
-    $('#list').innerHTML = items.map(renderCard).join('');
+    $('#list').innerHTML = `${banner ? `<div style="grid-column:1/-1">${banner}</div>` : ''}${items.map(renderCard).join('')}`;
   }
 
   function renderCard(i) {
@@ -425,12 +493,14 @@
     const pct = i.min > 0 ? Math.min(100, Math.round((i.qty / (i.min * 2)) * 100)) : (i.qty > 0 ? 100 : 0);
     const details = [i.material, i.type].filter(Boolean).join(' · ');
     const popCls = lastPopId === i.id ? 'is-pop' : '';
-    const tm = teamById(i.teamId);
-    const showConex = S.activeTeam === 'all' && tm;
+    const cx = conexById(i.conexId);
+    const tm = cx ? teamById(cx.teamId) : null;
+    const locked = !canEditConex(i.conexId);
+    const showConex = (S.activeConex === 'all' || S.activeConex.startsWith('team:')) && cx;
 
     return `
-      <article class="item-card" data-id="${i.id}">
-        <button type="button" class="item-card-top" data-edit="${i.id}" aria-label="Edit ${esc(i.name)}">
+      <article class="item-card ${locked ? 'is-locked' : ''}" data-id="${i.id}">
+        <button type="button" class="item-card-top" data-edit="${i.id}" aria-label="${locked ? 'View' : 'Edit'} ${esc(i.name)}">
           <div class="part-thumb ${i.photo ? '' : 'is-empty'}">
             ${i.photo ? `<img src="${esc(i.photo)}" alt="${esc(i.name)}" loading="lazy" decoding="async" width="60" height="60" onerror="this.parentElement.classList.add('is-empty');this.remove()">` : ICON.box}
           </div>
@@ -445,7 +515,8 @@
                 ${details ? `<span class="spec-detail">${esc(details)}</span>` : ''}
               </div>` : ''}
             <div class="loc-line">
-              ${showConex ? `<span class="conex-tag">${esc(tm.conex)}</span>` : ''}
+              ${showConex ? `<span class="conex-tag">${esc(cx.name)}</span>` : ''}
+              ${locked && S.activeConex === 'all' && tm ? `<span class="lock-pill">${esc(tm.name)} · View only</span>` : ''}
               ${i.bin ? `<span class="bin-tag">BIN ${esc(i.bin)}</span>` : ''}
               <span class="loc-item">${ICON.tag}${esc(i.category)}</span>
               ${i.min > 0 ? `<span class="loc-item">Min ${i.min}</span>` : ''}
@@ -459,14 +530,14 @@
 
         <div class="stepper-wrap">
           <div class="stepper">
-            <button type="button" class="step-btn is-minus" data-adj="-5" ${i.qty <= 0 ? 'disabled' : ''} aria-label="Remove 5 ${esc(i.name)}">−5</button>
-            <button type="button" class="step-btn is-minus" data-adj="-1" ${i.qty <= 0 ? 'disabled' : ''} aria-label="Remove 1 ${esc(i.name)}">−1</button>
-            <button type="button" class="qty-btn is-${st}" data-count="${i.id}" aria-label="Adjust or transfer ${esc(i.name)}, currently ${i.qty} ${esc(i.unit || 'ea')}">
+            <button type="button" class="step-btn is-minus" data-adj="-5" ${locked || i.qty <= 0 ? 'disabled' : ''} aria-label="Remove 5 ${esc(i.name)}">−5</button>
+            <button type="button" class="step-btn is-minus" data-adj="-1" ${locked || i.qty <= 0 ? 'disabled' : ''} aria-label="Remove 1 ${esc(i.name)}">−1</button>
+            <button type="button" class="qty-btn is-${st}" data-count="${i.id}" ${locked ? 'disabled' : ''} aria-label="${locked ? 'View-only quantity' : 'Adjust or transfer'} ${esc(i.name)}, currently ${i.qty} ${esc(i.unit || 'ea')}">
               <span class="qty-val ${popCls}">${i.qty}</span>
               <span class="qty-unit">${esc(i.unit || 'ea')}</span>
             </button>
-            <button type="button" class="step-btn is-plus" data-adj="1" aria-label="Add 1 ${esc(i.name)}">+1</button>
-            <button type="button" class="step-btn is-plus" data-adj="5" aria-label="Add 5 ${esc(i.name)}">+5</button>
+            <button type="button" class="step-btn is-plus" data-adj="1" ${locked ? 'disabled' : ''} aria-label="Add 1 ${esc(i.name)}">+1</button>
+            <button type="button" class="step-btn is-plus" data-adj="5" ${locked ? 'disabled' : ''} aria-label="Add 5 ${esc(i.name)}">+5</button>
           </div>
         </div>
       </article>`;
@@ -474,13 +545,13 @@
 
   function renderReorder() {
     const items = lowItems();
+    const banner = readOnlyBannerHtml();
     if (!items.length) {
-      const cur = activeTeamObj();
-      $('#v-reorder').innerHTML = `
+      $('#v-reorder').innerHTML = `${banner}
         <div class="empty-state">
           <div class="empty-icon">${ICON.checkCircle}</div>
           <h3>All stocked up</h3>
-          <p>${cur ? `Nothing in ${esc(cur.name)} (${esc(cur.conex)}) is at or below its reorder point.` : 'Nothing is at or below its reorder point.'} Set a Reorder at count on any part to track it automatically here.</p>
+          <p>Nothing in this view is at or below its reorder point. Set a Reorder at count on any part to track it automatically here.</p>
           <button type="button" class="btn btn-outline" data-v="stock">Back to Stock</button>
         </div>`;
       return;
@@ -490,7 +561,7 @@
     const lowCount = items.length - outCount;
     const totalOrder = items.reduce((sum, i) => sum + needQty(i), 0);
 
-    $('#v-reorder').innerHTML = `
+    $('#v-reorder').innerHTML = `${banner}
       <div class="reorder-summary">
         <div class="reorder-kpis">
           <div class="reorder-kpi is-out"><b>${outCount}</b><span>Out of stock</span></div>
@@ -508,7 +579,8 @@
         ${items.map((i) => {
           const order = needQty(i);
           const isOut = i.qty <= 0;
-          const tm = teamById(i.teamId);
+          const cx = conexById(i.conexId);
+          const locked = !canEditConex(i.conexId);
           return `
             <div class="reorder-card ${isOut ? 'is-out' : ''}">
               <div class="part-thumb ${i.photo ? '' : 'is-empty'}" style="width:52px;height:52px">
@@ -518,7 +590,7 @@
                 <div class="item-name" style="font-size:var(--text-sm)">${esc(i.name)}</div>
                 <div class="spec-line" style="margin-top:3px">
                   ${i.size ? `<span class="spec-size">${esc(i.size)}</span>` : ''}
-                  ${S.activeTeam === 'all' && tm ? `<span class="conex-tag">${esc(tm.conex)}</span>` : ''}
+                  ${(S.activeConex === 'all' || S.activeConex.startsWith('team:')) && cx ? `<span class="conex-tag">${esc(cx.name)}</span>` : ''}
                   ${i.bin ? `<span class="bin-tag">BIN ${esc(i.bin)}</span>` : ''}
                 </div>
                 <div class="loc-line" style="margin-top:4px">
@@ -528,9 +600,9 @@
               </button>
               <div class="reorder-right">
                 <span class="order-badge">Order ${order} ${esc(i.unit || 'ea')}</span>
-                <button type="button" class="receive-btn" data-receive="${i.id}" data-qty="${order}">
-                  ${ICON.check}Receive +${order}
-                </button>
+                ${locked
+                  ? `<span class="lock-pill">View only</span>`
+                  : `<button type="button" class="receive-btn" data-receive="${i.id}" data-qty="${order}">${ICON.check}Receive +${order}</button>`}
               </div>
             </div>`;
         }).join('')}
@@ -538,8 +610,10 @@
   }
 
   function renderActivity() {
-    const cur = activeTeamObj();
-    const scoped = cur ? S.log.filter((l) => l.teamId === cur.id || l.toTeamId === cur.id) : S.log;
+    const ids = new Set(activeScopeConexIds());
+    const scoped = S.activeConex === 'all'
+      ? S.log
+      : S.log.filter((l) => ids.has(l.conexId) || ids.has(l.toConexId));
 
     const filterBar = `
       <div class="status-bar">
@@ -558,9 +632,9 @@
 
     const entries = scoped.filter((l) => {
       if (actFilter === 'all') return true;
-      if (actFilter === 'xfer') return l.kind === 'xfer';
-      if (actFilter === 'out') return l.kind !== 'set' && l.kind !== 'xfer' && l.delta < 0;
-      if (actFilter === 'in') return l.kind !== 'set' && l.kind !== 'xfer' && l.delta > 0;
+      if (actFilter === 'xfer') return l.kind === 'xfer' || l.kind === 'conex-xfer';
+      if (actFilter === 'out') return !['set', 'xfer', 'conex-xfer'].includes(l.kind) && l.delta < 0;
+      if (actFilter === 'in') return !['set', 'xfer', 'conex-xfer'].includes(l.kind) && l.delta > 0;
       return l.kind === 'set' || l.kind === 'add' || l.kind === 'del';
     });
 
@@ -569,7 +643,7 @@
         <div class="empty-state">
           <div class="empty-icon">${ICON.clock}</div>
           <h3>${scoped.length ? 'No matching activity' : 'No activity logged yet'}</h3>
-          <p>${scoped.length ? 'Try switching the activity filter back to All.' : 'Every check-in, check-out, Conex transfer, restock, and count edit appears here automatically.'}</p>
+          <p>${scoped.length ? 'Try switching the activity filter back to All.' : 'Every check-in, check-out, part transfer, whole-Conex transfer, and count edit appears here automatically.'}</p>
           ${scoped.length
             ? `<button type="button" class="btn btn-outline" data-af="all">Show all activity</button>`
             : `<button type="button" class="btn btn-outline" data-v="stock">Go to Stock</button>`}
@@ -586,20 +660,23 @@
         html += `<h2 class="day-label">${esc(d)}</h2><div class="panel">`;
         day = d;
       }
-      const k = l.kind === 'xfer' ? 'xfer' : (l.kind === 'set' ? 'set' : (l.delta >= 0 ? 'in' : 'out'));
-      const sign = l.kind === 'xfer' ? `⇄${Math.abs(l.delta)}`
+      const isXfer = l.kind === 'xfer' || l.kind === 'conex-xfer';
+      const k = isXfer ? 'xfer' : (l.kind === 'set' ? 'set' : (l.delta >= 0 ? 'in' : 'out'));
+      const sign = l.kind === 'conex-xfer' ? 'BOX'
+        : l.kind === 'xfer' ? `⇄${Math.abs(l.delta)}`
         : l.kind === 'set' ? `=${l.to}`
         : (l.delta > 0 ? `+${l.delta}` : `${l.delta}`);
-      const verb = l.kind === 'xfer' ? 'Transferred'
+      const verb = l.kind === 'conex-xfer' ? 'Conex transferred'
+        : l.kind === 'xfer' ? 'Transferred'
         : l.kind === 'set' ? 'Count set'
         : l.kind === 'add' ? 'Added'
         : l.kind === 'del' ? 'Removed'
         : (l.delta > 0 ? 'Checked in' : 'Checked out');
-      const tm = l.teamId ? teamById(l.teamId) : null;
-      const toTm = l.toTeamId ? teamById(l.toTeamId) : null;
-      const routeTag = l.kind === 'xfer' && tm && toTm
-        ? `<span class="act-note">${esc(tm.conex)} → ${esc(toTm.conex)}</span>`
-        : (S.activeTeam === 'all' && tm ? `<span class="act-note">${esc(tm.conex)}</span>` : '');
+      const cx = l.conexId ? conexById(l.conexId) : null;
+      const toCx = l.toConexId ? conexById(l.toConexId) : null;
+      const routeTag = l.kind === 'xfer' && cx && toCx
+        ? `<span class="act-note">${esc(cx.name)} → ${esc(toCx.name)}</span>`
+        : (l.kind !== 'conex-xfer' && S.activeConex === 'all' && cx ? `<span class="act-note">${esc(cx.name)}</span>` : '');
 
       html += `
         <div class="act-row">
@@ -607,9 +684,9 @@
           <div class="act-copy">
             <div class="act-title">${esc(l.name)}</div>
             <div class="act-sub">
-              <span>${verb} · ${l.from} → ${l.to}</span>
+              <span>${l.kind === 'conex-xfer' ? esc(l.note) : `${verb} · ${l.from} → ${l.to}`}</span>
               ${routeTag}
-              ${l.note ? `<span class="act-note">${esc(l.note)}</span>` : ''}
+              ${l.kind !== 'conex-xfer' && l.note ? `<span class="act-note">${esc(l.note)}</span>` : ''}
             </div>
           </div>
           <span class="act-time">${esc(fmtTime(l.t))}</span>
@@ -627,7 +704,7 @@
     const backupNote = S.lastBackup
       ? `Last backed up ${fmtDay(S.lastBackup)} at ${fmtTime(S.lastBackup)}`
       : 'Save a full JSON copy of all teams and Conex boxes';
-    const cur = activeTeamObj();
+    const myTm = myTeamObj();
     const libModified = DEFAULT_PHOTO_LIB.some((def) => {
       const curP = S.photoLib.find((p) => p.id === def.id);
       return !curP || curP.label !== def.label || curP.src !== def.src;
@@ -636,25 +713,63 @@
     $('#v-tools').innerHTML = `
       <div class="tools-grid">
         <div class="panel">
-          <h2 class="panel-title">Teams &amp; Conex Boxes</h2>
-          ${S.teams.map((t) => {
-            const cnt = S.items.filter((i) => i.teamId === t.id).length;
-            const low = S.items.filter((i) => i.teamId === t.id && statusOf(i) !== 'ok').length;
+          <h2 class="panel-title">Access &amp; Team Lock</h2>
+          <button type="button" class="list-item" id="setMyTeamBtn">
+            <span class="li-icon">${ICON.shield}</span>
+            <span class="li-text">
+              <span class="li-label">My Team on this phone: <strong>${esc(myTm.name)}</strong></span>
+              <span class="li-desc">Other teams' Conex boxes stay view-only by default</span>
+            </span>
+            <span class="li-chev">${ICON.chev}</span>
+          </button>
+          <button type="button" class="list-item" id="setPinBtn">
+            <span class="li-icon">${ICON.lock}</span>
+            <span class="li-text">
+              <span class="li-label">Supervisor PIN: <strong>${S.pin ? 'Active (••••)' : 'Not set'}</strong></span>
+              <span class="li-desc">${S.pin ? 'Required to unlock other teams or transfer a Conex box' : 'Set a 4-digit PIN to protect other teams and Conex transfers'}</span>
+            </span>
+            <span class="li-chev">${ICON.chev}</span>
+          </button>
+          ${unlockedTeams.size ? `
+            <button type="button" class="list-item" id="relockBtn">
+              <span class="li-icon">${ICON.unlock}</span>
+              <span class="li-text">
+                <span class="li-label">Re-lock other teams now</span>
+                <span class="li-desc">${unlockedTeams.size} other team${unlockedTeams.size === 1 ? '' : 's'} currently unlocked for editing</span>
+              </span>
+              <span class="li-chev">${ICON.chev}</span>
+            </button>` : ''}
+        </div>
+
+        <div class="panel">
+          <h2 class="panel-title">Conex Boxes &amp; Teams</h2>
+          ${S.conexes.map((c) => {
+            const tm = teamById(c.teamId);
+            const cnt = S.items.filter((i) => i.conexId === c.id).length;
+            const low = S.items.filter((i) => i.conexId === c.id && statusOf(i) !== 'ok').length;
             return `
-              <button type="button" class="list-item" data-editteam="${esc(t.id)}">
+              <button type="button" class="list-item" data-editconex="${esc(c.id)}">
                 <span class="li-icon">${ICON.conex}</span>
                 <span class="li-text">
-                  <span class="li-label">${esc(t.name)} <span class="conex-pill" style="margin-left:6px">${esc(t.conex)}</span></span>
-                  <span class="li-desc">${cnt} part${cnt === 1 ? '' : 's'}${low ? ` · ${low} low/out` : ''}${S.activeTeam === t.id ? ' · Active' : ''}</span>
+                  <span class="li-label">${esc(c.name)} <span class="conex-pill" style="margin-left:6px">${esc(tm.name)}</span></span>
+                  <span class="li-desc">${cnt} part${cnt === 1 ? '' : 's'}${low ? ` · ${low} low/out` : ''} · Tap to edit or transfer Conex</span>
                 </span>
                 <span class="li-chev">${ICON.chev}</span>
               </button>`;
           }).join('')}
+          <button type="button" class="list-item" id="addConexBtn">
+            <span class="li-icon">${ICON.plus}</span>
+            <span class="li-text">
+              <span class="li-label">Add Conex box</span>
+              <span class="li-desc">Assign a new Conex to an existing or new team</span>
+            </span>
+            <span class="li-chev">${ICON.chev}</span>
+          </button>
           <button type="button" class="list-item" id="addTeamBtn">
             <span class="li-icon">${ICON.plus}</span>
             <span class="li-text">
-              <span class="li-label">Add team &amp; Conex box</span>
-              <span class="li-desc">Each team gets its own dedicated Conex inventory</span>
+              <span class="li-label">Add team</span>
+              <span class="li-desc">Create a new crew (teams can hold 1 or multiple Conex boxes)</span>
             </span>
             <span class="li-chev">${ICON.chev}</span>
           </button>
@@ -718,20 +833,11 @@
             </span>
             <span class="li-chev">${ICON.chev}</span>
           </button>
-          ${cur ? `
-            <button type="button" class="list-item" id="bkTeam">
-              <span class="li-icon">${ICON.share}</span>
-              <span class="li-text">
-                <span class="li-label">Export ${esc(cur.name)} · ${esc(cur.conex)} (JSON)</span>
-                <span class="li-desc">Share just this Conex box offline with another phone</span>
-              </span>
-              <span class="li-chev">${ICON.chev}</span>
-            </button>` : ''}
           <button type="button" class="list-item" id="rs">
             <span class="li-icon">${ICON.ul}</span>
             <span class="li-text">
               <span class="li-label">Restore from backup</span>
-              <span class="li-desc">Load a previously saved full or single-Conex backup</span>
+              <span class="li-desc">Load a previously saved JSON backup file</span>
             </span>
             <span class="li-chev">${ICON.chev}</span>
           </button>
@@ -746,18 +852,14 @@
         </div>
 
         <div class="panel">
-          <h2 class="panel-title">Device &amp; Storage</h2>
+          <h2 class="panel-title">Device &amp; Reset</h2>
           <div class="list-item">
             <span class="li-icon">${ICON.shield}</span>
             <span class="li-text">
               <span class="li-label">Offline storage</span>
-              <span class="li-desc">${engineLabel} · ${persisted ? 'Protected' : 'Back up regularly'} · ${S.teams.length} team${S.teams.length === 1 ? '' : 's'} · ${S.items.length} part${S.items.length === 1 ? '' : 's'} · ${S.log.length} log${S.log.length === 1 ? '' : 's'}</span>
+              <span class="li-desc">${engineLabel} · ${persisted ? 'Protected' : 'Back up regularly'} · ${S.conexes.length} Conex · ${S.items.length} part${S.items.length === 1 ? '' : 's'}</span>
             </span>
           </div>
-        </div>
-
-        <div class="panel">
-          <h2 class="panel-title">Reset</h2>
           ${hasSamples ? `
             <button type="button" class="list-item" id="clrS">
               <span class="li-icon">${ICON.trash}</span>
@@ -790,16 +892,14 @@
     undoState = undo || null;
     $('#toast').classList.add('is-open');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => {
-      $('#toast').classList.remove('is-open');
-    }, undo ? 4400 : 2800);
+    toastTimer = setTimeout(() => { $('#toast').classList.remove('is-open'); }, undo ? 4400 : 2800);
   }
 
   function logIt(i, kind, from, to, note, extra) {
     S.log.unshift({
       t: Date.now(),
       id: i.id,
-      teamId: i.teamId,
+      conexId: i.conexId,
       name: i.name,
       kind,
       delta: to - from,
@@ -812,6 +912,7 @@
   }
 
   function setQty(i, to, kind, note) {
+    if (!canEditConex(i.conexId)) { toast('View only — unlock team to edit'); return; }
     to = Math.max(0, Math.round(to));
     const from = i.qty;
     if (to === from && kind !== 'set') return;
@@ -841,21 +942,19 @@
     });
   }
 
-  function transferQty(srcItem, toTeamId, amount, note) {
+  function transferPartQty(srcItem, toConexId, amount, note) {
+    if (!canEditConex(srcItem.conexId)) { toast('View only — unlock team to transfer'); return; }
     const qty = Math.min(srcItem.qty, Math.max(0, Math.round(amount)));
-    if (qty <= 0) {
-      toast('Enter a quantity greater than 0');
-      return;
-    }
-    const destTeam = teamById(toTeamId);
-    if (!destTeam || destTeam.id === srcItem.teamId) return;
+    if (qty <= 0) { toast('Enter a quantity greater than 0'); return; }
+    const destCx = conexById(toConexId);
+    if (!destCx || destCx.id === srcItem.conexId) return;
 
     const prevSrcQty = srcItem.qty;
     const prevLogLen = S.log.length;
     const matchKey = (x) => [x.name, x.size, x.material, x.category].map((s) => String(s || '').trim().toLowerCase()).join('|');
     const key = matchKey(srcItem);
 
-    let destItem = S.items.find((x) => x.teamId === toTeamId && matchKey(x) === key);
+    let destItem = S.items.find((x) => x.conexId === toConexId && matchKey(x) === key);
     let createdDest = false;
     let prevDestQty = destItem ? destItem.qty : 0;
 
@@ -866,25 +965,19 @@
       destItem.qty += qty;
       destItem.updated = Date.now();
     } else {
-      destItem = {
-        ...srcItem,
-        id: uid(),
-        teamId: toTeamId,
-        qty,
-        updated: Date.now()
-      };
+      destItem = { ...srcItem, id: uid(), conexId: toConexId, qty, updated: Date.now() };
       delete destItem.sample;
       S.items.push(destItem);
       createdDest = true;
     }
 
     lastPopId = srcItem.id;
-    logIt(srcItem, 'xfer', prevSrcQty, srcItem.qty, note, { toTeamId });
+    logIt(srcItem, 'xfer', prevSrcQty, srcItem.qty, note, { toConexId });
     save();
     render();
     if (navigator.vibrate) try { navigator.vibrate(10); } catch (_) {}
 
-    toast(`Transferred ${qty} ${srcItem.unit || 'ea'} to ${destTeam.conex}`, () => {
+    toast(`Transferred ${qty} ${srcItem.unit || 'ea'} to ${destCx.name}`, () => {
       srcItem.qty = prevSrcQty;
       if (createdDest) {
         const idx = S.items.findIndex((x) => x.id === destItem.id);
@@ -922,46 +1015,202 @@
     if (e.key === 'Escape' && $('#sheet').classList.contains('is-open')) closeSheet();
   });
 
-  // Switch Team / Conex Sheet
-  function openTeamSwitcher() {
-    const totalLow = lowItems(S.items).length;
-    openSheet('Switch Team / Conex', `
+  // Unlock Other Team Sheet (requires Supervisor PIN if set)
+  function openUnlockTeam(teamId) {
+    const tm = teamById(teamId);
+    openSheet(`Unlock ${tm.name}`, `
+      <div class="callout is-warn">
+        ${ICON.lock}
+        <div>${tm.name}'s Conex boxes are view-only on this phone to prevent accidental edits. ${S.pin ? 'Enter the Supervisor PIN to unlock editing for this session.' : 'Confirm below to temporarily unlock editing for this session.'}</div>
+      </div>
+      ${S.pin ? `
+        <div class="field" id="fg-upin">
+          <label for="u-pin">Supervisor PIN</label>
+          <input id="u-pin" type="password" inputmode="numeric" maxlength="8" placeholder="Enter PIN" autocomplete="off">
+          <div class="field-error">Incorrect PIN.</div>
+        </div>` : ''}
+    `,
+    `<button type="button" class="btn" style="flex:1" id="u-cancel">Cancel</button>
+     <button type="button" class="btn btn-primary" style="flex:2" id="u-ok">Unlock ${esc(tm.name)}</button>`);
+
+    $('#u-cancel').onclick = closeSheet;
+    $('#u-ok').onclick = () => {
+      if (S.pin) {
+        if ($('#u-pin').value.trim() !== S.pin) {
+          $('#fg-upin').classList.add('has-error');
+          $('#u-pin').focus();
+          return;
+        }
+      }
+      unlockedTeams.add(tm.id);
+      closeSheet();
+      render();
+      toast(`${tm.name} unlocked for this session`);
+    };
+    if (S.pin) {
+      $('#u-pin').oninput = () => $('#fg-upin').classList.remove('has-error');
+      setTimeout(() => $('#u-pin')?.focus(), 220);
+    }
+  }
+
+  // Set My Team Sheet
+  function openSetMyTeam() {
+    openSheet('My Team on this phone', `
+      <div class="field-hint" style="margin-bottom:var(--space-3)">Choose which team uses this device. Your team's Conex boxes are always editable; other teams' Conex boxes stay view-only.</div>
       <div>
         ${S.teams.map((t) => {
-          const items = S.items.filter((i) => i.teamId === t.id);
-          const lows = items.filter((i) => statusOf(i) !== 'ok').length;
-          const active = S.activeTeam === t.id;
+          const cxList = conexesForTeam(t.id).map((c) => c.name).join(', ') || 'No Conex assigned';
+          const active = S.myTeamId === t.id;
           return `
-            <button type="button" class="team-option ${active ? 'is-active' : ''}" data-pick-team="${esc(t.id)}">
+            <button type="button" class="team-option ${active ? 'is-active' : ''}" data-pick-myteam="${esc(t.id)}">
               <div class="team-option-copy">
-                <div class="team-option-title">
-                  <span>${esc(t.name)}</span>
-                  <span class="conex-pill">${esc(t.conex)}</span>
-                </div>
-                <div class="team-option-meta">${items.length} part${items.length === 1 ? '' : 's'}${lows ? ` · ${lows} low/out` : ' · All stocked'}</div>
+                <div class="team-option-title"><span>${esc(t.name)}</span></div>
+                <div class="team-option-meta">${esc(cxList)}</div>
               </div>
               ${active ? ICON.check : ''}
             </button>`;
         }).join('')}
+      </div>
+    `, '');
 
-        ${S.teams.length > 1 ? `
-          <button type="button" class="team-option ${S.activeTeam === 'all' ? 'is-active' : ''}" data-pick-team="all">
+    document.querySelectorAll('[data-pick-myteam]').forEach((b) => {
+      b.onclick = () => {
+        S.myTeamId = b.dataset.pickMyteam;
+        unlockedTeams.clear();
+        const mine = conexesForTeam(S.myTeamId);
+        if (mine.length) S.activeConex = mine[0].id;
+        save();
+        closeSheet();
+        render();
+        toast(`Device assigned to ${myTeamObj().name}`);
+      };
+    });
+  }
+
+  // Set / Change Supervisor PIN Sheet
+  function openSetPin() {
+    openSheet(S.pin ? 'Change Supervisor PIN' : 'Set Supervisor PIN', `
+      <div class="field-hint" style="margin-bottom:var(--space-3)">A 4-digit PIN prevents other crews from unlocking another team's Conex box or transferring a Conex box on this phone.</div>
+      ${S.pin ? `
+        <div class="field" id="fg-curpin">
+          <label for="p-cur">Current PIN</label>
+          <input id="p-cur" type="password" inputmode="numeric" maxlength="8" placeholder="Current PIN" autocomplete="off">
+          <div class="field-error">Current PIN does not match.</div>
+        </div>` : ''}
+      <div class="field" id="fg-newpin">
+        <label for="p-new">New 4-digit PIN</label>
+        <input id="p-new" type="password" inputmode="numeric" maxlength="8" placeholder="e.g. 1234" autocomplete="off">
+        <div class="field-error">Enter at least 4 digits.</div>
+      </div>
+      ${S.pin ? `
+        <button type="button" class="btn btn-danger" style="width:100%" id="p-clear">Remove PIN</button>` : ''}
+    `,
+    `<button type="button" class="btn" style="flex:1" id="p-cancel">Cancel</button>
+     <button type="button" class="btn btn-primary" style="flex:2" id="p-save">Save PIN</button>`);
+
+    $('#p-cancel').onclick = closeSheet;
+    $('#p-new').oninput = () => $('#fg-newpin').classList.remove('has-error');
+    if ($('#p-cur')) $('#p-cur').oninput = () => $('#fg-curpin').classList.remove('has-error');
+
+    $('#p-save').onclick = () => {
+      if (S.pin && $('#p-cur').value.trim() !== S.pin) {
+        $('#fg-curpin').classList.add('has-error');
+        $('#p-cur').focus();
+        return;
+      }
+      const next = $('#p-new').value.trim();
+      if (next.length < 4) {
+        $('#fg-newpin').classList.add('has-error');
+        $('#p-new').focus();
+        return;
+      }
+      S.pin = next;
+      save();
+      closeSheet();
+      render();
+      toast('Supervisor PIN saved');
+    };
+
+    if ($('#p-clear')) {
+      $('#p-clear').onclick = () => {
+        if ($('#p-cur').value.trim() !== S.pin) {
+          $('#fg-curpin').classList.add('has-error');
+          $('#p-cur').focus();
+          return;
+        }
+        S.pin = '';
+        save();
+        closeSheet();
+        render();
+        toast('Supervisor PIN removed');
+      };
+    }
+  }
+
+  // Switch Team / Conex Sheet (groups Conex boxes by Team; supports 2+ Conex per Team!)
+  function openConexSwitcher() {
+    const totalLow = lowItems(S.items).length;
+    let body = '<div>';
+
+    S.teams.forEach((t) => {
+      const boxes = conexesForTeam(t.id);
+      const isMine = t.id === S.myTeamId;
+      const isUnlocked = unlockedTeams.has(t.id);
+      body += `<div class="section-div" style="margin-top:var(--space-2)">${esc(t.name)}${isMine ? ' (My Team)' : (isUnlocked ? ' (Unlocked)' : ' · View only')}</div>`;
+
+      if (boxes.length > 1) {
+        const teamItemCnt = S.items.filter((i) => boxes.some((b) => b.id === i.conexId)).length;
+        const active = S.activeConex === `team:${t.id}`;
+        body += `
+          <button type="button" class="team-option ${active ? 'is-active' : ''}" data-pick-conex="team:${esc(t.id)}">
+            <div class="team-option-copy">
+              <div class="team-option-title"><span>All ${esc(t.name)}</span><span class="conex-pill">${boxes.length} CONEX</span></div>
+              <div class="team-option-meta">${teamItemCnt} parts across ${boxes.map((b) => b.name).join(' & ')}</div>
+            </div>
+            ${active ? ICON.check : ''}
+          </button>`;
+      }
+
+      boxes.forEach((c) => {
+        const items = S.items.filter((i) => i.conexId === c.id);
+        const lows = items.filter((i) => statusOf(i) !== 'ok').length;
+        const active = S.activeConex === c.id;
+        body += `
+          <button type="button" class="team-option ${active ? 'is-active' : ''}" data-pick-conex="${esc(c.id)}">
             <div class="team-option-copy">
               <div class="team-option-title">
-                <span>All Teams</span>
-                <span class="conex-pill">${S.teams.length} CONEX</span>
+                <span>${esc(c.name)}</span>
+                ${!isMine && !isUnlocked ? `<span class="lock-pill">View only</span>` : ''}
               </div>
-              <div class="team-option-meta">${S.items.length} total part${S.items.length === 1 ? '' : 's'}${totalLow ? ` · ${totalLow} low/out` : ''}</div>
+              <div class="team-option-meta">${items.length} part${items.length === 1 ? '' : 's'}${lows ? ` · ${lows} low/out` : ' · All stocked'}</div>
             </div>
-            ${S.activeTeam === 'all' ? ICON.check : ''}
-          </button>` : ''}
-      </div>
-    `,
-    `<button type="button" class="btn btn-outline" style="flex:1" id="swAddTeam">${ICON.plus}Add team &amp; Conex</button>`);
+            ${active ? ICON.check : ''}
+          </button>`;
+      });
 
-    document.querySelectorAll('[data-pick-team]').forEach((b) => {
+      if (!boxes.length) {
+        body += `<div class="field-hint" style="padding:4px 12px 8px">No Conex assigned to ${esc(t.name)}</div>`;
+      }
+    });
+
+    if (S.conexes.length > 1) {
+      body += `<div class="section-div">Yard Overview</div>
+        <button type="button" class="team-option ${S.activeConex === 'all' ? 'is-active' : ''}" data-pick-conex="all">
+          <div class="team-option-copy">
+            <div class="team-option-title"><span>All Conex Boxes</span><span class="conex-pill">${S.conexes.length} BOXES</span></div>
+            <div class="team-option-meta">${S.items.length} total parts${totalLow ? ` · ${totalLow} low/out` : ''}</div>
+          </div>
+          ${S.activeConex === 'all' ? ICON.check : ''}
+        </button>`;
+    }
+    body += '</div>';
+
+    openSheet('Switch Team / Conex', body,
+      `<button type="button" class="btn btn-outline" style="flex:1" id="swTransferConex">${ICON.xfer}Transfer Conex</button>`);
+
+    document.querySelectorAll('[data-pick-conex]').forEach((b) => {
       b.onclick = () => {
-        S.activeTeam = b.dataset.pickTeam;
+        S.activeConex = b.dataset.pickConex;
         cat = 'All';
         statusFilter = 'all';
         save();
@@ -969,88 +1218,191 @@
         render();
       };
     });
-    $('#swAddTeam').onclick = () => openTeamEditor(null);
+    $('#swTransferConex').onclick = () => openWholeConexTransfer(null);
   }
 
-  // Add / Edit Team & Conex Sheet
-  function openTeamEditor(teamId) {
-    const existing = teamId ? S.teams.find((t) => t.id === teamId) : null;
-    const nextNum = S.teams.length + 1;
-    const itemCount = existing ? S.items.filter((i) => i.teamId === existing.id).length : 0;
+  // Whole-Conex Transfer Sheet (reassign an entire Conex box + all its inventory to another team!)
+  function openWholeConexTransfer(preselectConexId) {
+    if (S.teams.length < 2) {
+      toast('Add a second team in Tools first');
+      return;
+    }
+    const cxId = preselectConexId || (S.activeConex !== 'all' && !S.activeConex.startsWith('team:') ? S.activeConex : S.conexes[0].id);
+    const curCx = conexById(cxId);
 
-    openSheet(existing ? 'Edit team & Conex' : 'New team & Conex', `
-      <div class="field" id="fg-tname">
-        <label for="t-name">Team / Crew name</label>
-        <input id="t-name" value="${esc(existing ? existing.name : '')}" placeholder="e.g. Crew ${String.fromCharCode(64 + nextNum)}, Turnaround, Fab Shop" autocomplete="off">
-        <div class="field-error">Enter a team name.</div>
+    openSheet('Transfer Conex to another team', `
+      <div class="callout is-warn">
+        ${ICON.xfer}
+        <div>Reassign an entire Conex box and all of its inventory to another team. Teams can hold one or multiple Conex boxes.</div>
       </div>
-      <div class="field" id="fg-tconex">
-        <label for="t-conex">Assigned Conex box</label>
-        <input id="t-conex" value="${esc(existing ? existing.conex : `Conex ${nextNum}`)}" placeholder="e.g. Conex ${nextNum}" autocomplete="off">
-        <div class="field-error">Enter a Conex box label.</div>
+
+      <div class="field">
+        <label for="tc-conex">Conex box to transfer</label>
+        <select id="tc-conex">${S.conexes.map((c) => {
+          const tm = teamById(c.teamId);
+          const cnt = S.items.filter((i) => i.conexId === c.id).length;
+          return `<option value="${esc(c.id)}" ${c.id === curCx.id ? 'selected' : ''}>${esc(c.name)} (Currently ${esc(tm.name)} · ${cnt} parts)</option>`;
+        }).join('')}</select>
       </div>
-      ${existing && S.teams.length > 1 ? `
-        <div class="btn-row" id="teamDelRow" style="margin-top:var(--space-2)">
-          <button type="button" class="btn btn-danger" style="flex:1" id="t-del">${ICON.trash}Remove team</button>
-        </div>
-        <div class="inline-confirm hidden" id="teamDelConfirm">
-          <span>${itemCount ? `Move ${itemCount} part${itemCount === 1 ? '' : 's'} first` : `Remove ${esc(existing.name)}?`}</span>
-          <div class="btn-row">
-            <button type="button" class="btn btn-sm btn-outline" id="t-del-no">Cancel</button>
-            ${itemCount ? '' : `<button type="button" class="btn btn-sm btn-danger-solid" id="t-del-yes">Remove</button>`}
-          </div>
+
+      <div class="field" id="fg-tcdest">
+        <label for="tc-dest">Transfer ownership to team</label>
+        <select id="tc-dest"></select>
+        <div class="field-error">Choose a different destination team.</div>
+      </div>
+
+      ${S.pin ? `
+        <div class="field" id="fg-tcpin">
+          <label for="tc-pin">Supervisor PIN</label>
+          <input id="tc-pin" type="password" inputmode="numeric" maxlength="8" placeholder="Enter PIN" autocomplete="off">
+          <div class="field-error">Incorrect PIN.</div>
         </div>` : ''}
     `,
-    `<button type="button" class="btn" style="flex:1" id="t-cancel">Cancel</button>
-     <button type="button" class="btn btn-primary" style="flex:2" id="t-save">${existing ? 'Save changes' : 'Add team'}</button>`);
+    `<button type="button" class="btn" style="flex:1" id="tc-cancel">Cancel</button>
+     <button type="button" class="btn btn-primary" style="flex:2" id="tc-ok">Transfer Conex</button>`);
 
-    $('#t-name').oninput = () => $('#fg-tname').classList.remove('has-error');
-    $('#t-conex').oninput = () => $('#fg-tconex').classList.remove('has-error');
-    $('#t-cancel').onclick = closeSheet;
-    $('#t-save').onclick = () => {
-      const name = $('#t-name').value.trim();
-      const conex = $('#t-conex').value.trim();
-      if (!name) { $('#fg-tname').classList.add('has-error'); $('#t-name').focus(); return; }
-      if (!conex) { $('#fg-tconex').classList.add('has-error'); $('#t-conex').focus(); return; }
+    const syncDest = () => {
+      const selectedCx = conexById($('#tc-conex').value);
+      const others = S.teams.filter((t) => t.id !== selectedCx.teamId);
+      $('#tc-dest').innerHTML = others.map((t) => {
+        const cnt = conexesForTeam(t.id).length;
+        return `<option value="${esc(t.id)}">${esc(t.name)} (currently ${cnt} Conex)</option>`;
+      }).join('');
+      $('#tc-ok').textContent = others.length ? `Transfer ${selectedCx.name} to ${others[0].name}` : 'Transfer Conex';
+    };
+
+    $('#tc-conex').onchange = syncDest;
+    $('#tc-dest').onchange = () => {
+      const selectedCx = conexById($('#tc-conex').value);
+      const destTm = teamById($('#tc-dest').value);
+      $('#tc-ok').textContent = `Transfer ${selectedCx.name} to ${destTm.name}`;
+    };
+    syncDest();
+
+    if ($('#tc-pin')) $('#tc-pin').oninput = () => $('#fg-tcpin').classList.remove('has-error');
+    $('#tc-cancel').onclick = closeSheet;
+    $('#tc-ok').onclick = () => {
+      if (S.pin && $('#tc-pin').value.trim() !== S.pin) {
+        $('#fg-tcpin').classList.add('has-error');
+        $('#tc-pin').focus();
+        return;
+      }
+      const cx = conexById($('#tc-conex').value);
+      const fromTm = teamById(cx.teamId);
+      const toTm = teamById($('#tc-dest').value);
+      if (!toTm || toTm.id === fromTm.id) return;
+
+      cx.teamId = toTm.id;
+      const partCount = S.items.filter((i) => i.conexId === cx.id).length;
+      S.log.unshift({
+        t: Date.now(),
+        id: cx.id,
+        conexId: cx.id,
+        name: cx.name,
+        kind: 'conex-xfer',
+        delta: 0,
+        from: 0,
+        to: partCount,
+        note: `${fromTm.name} → ${toTm.name} (${partCount} parts)`
+      });
+      save();
+      closeSheet();
+      render();
+      toast(`${cx.name} transferred to ${toTm.name}`);
+    };
+  }
+
+  // Add / Edit Conex Box Sheet
+  function openConexEditor(conexId) {
+    const existing = conexId ? conexById(conexId) : null;
+    const nextNum = S.conexes.length + 1;
+    const partCount = existing ? S.items.filter((i) => i.conexId === existing.id).length : 0;
+
+    openSheet(existing ? `Manage ${existing.name}` : 'Add Conex box', `
+      <div class="field" id="fg-cname">
+        <label for="cx-name">Conex box name / number</label>
+        <input id="cx-name" value="${esc(existing ? existing.name : `Conex ${nextNum}`)}" placeholder="e.g. Conex ${nextNum}" autocomplete="off">
+        <div class="field-error">Enter a Conex name.</div>
+      </div>
+      <div class="field">
+        <label for="cx-team">Assigned team</label>
+        <select id="cx-team">${S.teams.map((t) => `<option value="${esc(t.id)}" ${(existing ? existing.teamId : S.myTeamId) === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
+      </div>
+      ${existing && S.teams.length > 1 ? `
+        <button type="button" class="btn btn-outline" style="width:100%;margin-bottom:var(--space-2)" id="cx-xfer">${ICON.xfer}Transfer ${esc(existing.name)} to another team</button>` : ''}
+      ${existing && S.conexes.length > 1 ? `
+        <button type="button" class="btn btn-danger" style="width:100%" id="cx-del">${ICON.trash}Remove Conex box</button>` : ''}
+    `,
+    `<button type="button" class="btn" style="flex:1" id="cx-cancel">Cancel</button>
+     <button type="button" class="btn btn-primary" style="flex:2" id="cx-save">${existing ? 'Save Conex' : 'Add Conex'}</button>`);
+
+    $('#cx-name').oninput = () => $('#fg-cname').classList.remove('has-error');
+    $('#cx-cancel').onclick = closeSheet;
+    $('#cx-save').onclick = () => {
+      const name = $('#cx-name').value.trim();
+      const teamId = $('#cx-team').value;
+      if (!name) { $('#fg-cname').classList.add('has-error'); $('#cx-name').focus(); return; }
       if (existing) {
         existing.name = name;
-        existing.conex = conex;
-        toast(`Updated ${name} (${conex})`);
+        existing.teamId = teamId;
+        toast(`Saved ${name}`);
       } else {
-        const nt = { id: 'team-' + uid(), name, conex };
-        S.teams.push(nt);
-        S.activeTeam = nt.id;
-        toast(`Added ${name} (${conex})`);
+        const nc = { id: 'conex-' + uid(), name, teamId };
+        S.conexes.push(nc);
+        S.activeConex = nc.id;
+        toast(`Added ${name}`);
       }
       save();
       closeSheet();
       render();
     };
-
-    if (existing && S.teams.length > 1) {
-      $('#t-del').onclick = () => {
-        if (itemCount) {
-          toast(`Transfer or remove ${itemCount} part${itemCount > 1 ? 's' : ''} in ${existing.conex} first`);
-          return;
-        }
-        $('#teamDelRow').classList.add('hidden');
-        $('#teamDelConfirm').classList.remove('hidden');
+    if ($('#cx-xfer')) $('#cx-xfer').onclick = () => openWholeConexTransfer(existing.id);
+    if ($('#cx-del')) {
+      $('#cx-del').onclick = () => {
+        if (partCount) { toast(`Move or delete ${partCount} part${partCount > 1 ? 's' : ''} in ${existing.name} first`); return; }
+        S.conexes = S.conexes.filter((c) => c.id !== existing.id);
+        if (S.activeConex === existing.id) S.activeConex = S.conexes[0].id;
+        save();
+        closeSheet();
+        render();
+        toast(`Removed ${existing.name}`);
       };
-      $('#t-del-no').onclick = () => {
-        $('#teamDelConfirm').classList.add('hidden');
-        $('#teamDelRow').classList.remove('hidden');
-      };
-      if ($('#t-del-yes')) {
-        $('#t-del-yes').onclick = () => {
-          S.teams = S.teams.filter((t) => t.id !== existing.id);
-          if (S.activeTeam === existing.id) S.activeTeam = S.teams[0].id;
-          save();
-          closeSheet();
-          render();
-          toast(`Removed ${existing.name}`);
-        };
-      }
     }
+  }
+
+  // Add Team Sheet
+  function openAddTeam() {
+    const nextLetter = String.fromCharCode(65 + S.teams.length);
+    openSheet('Add team', `
+      <div class="field" id="fg-tname">
+        <label for="t-name">Team / Crew name</label>
+        <input id="t-name" placeholder="e.g. Crew ${nextLetter}, Turnaround, Fab Shop" autocomplete="off">
+        <div class="field-error">Enter a team name.</div>
+      </div>
+      <div class="field">
+        <label for="t-conex">Assign a new Conex box (optional)</label>
+        <input id="t-conex" value="Conex ${S.conexes.length + 1}" placeholder="Leave blank for no Conex yet" autocomplete="off">
+      </div>
+    `,
+    `<button type="button" class="btn" style="flex:1" id="t-cancel">Cancel</button>
+     <button type="button" class="btn btn-primary" style="flex:2" id="t-save">Add team</button>`);
+
+    $('#t-name').oninput = () => $('#fg-tname').classList.remove('has-error');
+    $('#t-cancel').onclick = closeSheet;
+    $('#t-save').onclick = () => {
+      const name = $('#t-name').value.trim();
+      const conexName = $('#t-conex').value.trim();
+      if (!name) { $('#fg-tname').classList.add('has-error'); $('#t-name').focus(); return; }
+      const nt = { id: 'team-' + uid(), name };
+      S.teams.push(nt);
+      if (conexName) {
+        S.conexes.push({ id: 'conex-' + uid(), name: conexName, teamId: nt.id });
+      }
+      save();
+      closeSheet();
+      render();
+      toast(`Added ${name}`);
+    };
     setTimeout(() => $('#t-name')?.focus(), 250);
   }
 
@@ -1120,7 +1472,6 @@
         const oldSrc = existing.src;
         existing.label = label;
         existing.src = libEditSrc;
-        // Propagate replaced photo cleanly to any items using that exact library photo
         if (oldSrc !== libEditSrc) {
           S.items.forEach((it) => { if (it.photo === oldSrc) it.photo = libEditSrc; });
         }
@@ -1135,14 +1486,8 @@
     };
 
     if (existing) {
-      $('#lp-del').onclick = () => {
-        $('#lpDelRow').classList.add('hidden');
-        $('#lpDelConfirm').classList.remove('hidden');
-      };
-      $('#lp-del-no').onclick = () => {
-        $('#lpDelConfirm').classList.add('hidden');
-        $('#lpDelRow').classList.remove('hidden');
-      };
+      $('#lp-del').onclick = () => { $('#lpDelRow').classList.add('hidden'); $('#lpDelConfirm').classList.remove('hidden'); };
+      $('#lp-del-no').onclick = () => { $('#lpDelConfirm').classList.add('hidden'); $('#lpDelRow').classList.remove('hidden'); };
       $('#lp-del-yes').onclick = () => {
         S.photoLib = S.photoLib.filter((p) => p.id !== existing.id);
         save();
@@ -1156,10 +1501,7 @@
   $('#libPhotoIn').onchange = (e) => {
     const f = e.target.files[0];
     if (!f) return;
-    compressImage(f, (dataUrl) => {
-      libEditSrc = dataUrl;
-      updateLibPhotoPreview();
-    });
+    compressImage(f, (dataUrl) => { libEditSrc = dataUrl; updateLibPhotoPreview(); });
     e.target.value = '';
   };
 
@@ -1195,16 +1537,11 @@
           </button>`).join('')}
       </div>`, '');
     document.querySelectorAll('[data-pick-sort]').forEach((b) => {
-      b.onclick = () => {
-        S.sort = b.dataset.pickSort;
-        save();
-        closeSheet();
-        renderStock();
-      };
+      b.onclick = () => { S.sort = b.dataset.pickSort; save(); closeSheet(); renderStock(); };
     });
   }
 
-  // Add / Edit Item Sheet
+  // Add / Edit Item Sheet (or View-Only Part Sheet if locked!)
   let editing = null;
   let editPhoto = '';
 
@@ -1224,21 +1561,58 @@
 
   function openEdit(id, dupFrom) {
     const src = id ? S.items.find((x) => x.id === id) : dupFrom;
+    if (id && src && !canEditConex(src.conexId)) {
+      const cx = conexById(src.conexId);
+      const tm = teamById(cx.teamId);
+      openSheet('Part details (View only)', `
+        <div class="callout is-warn">
+          ${ICON.lock}
+          <div>This item is in <strong>${esc(cx.name)} (${esc(tm.name)})</strong> and is view-only on this phone.</div>
+        </div>
+        <div class="count-header">
+          <div class="part-thumb ${src.photo ? '' : 'is-empty'}" style="width:60px;height:60px">
+            ${src.photo ? `<img src="${esc(src.photo)}" alt="${esc(src.name)}">` : ICON.box}
+          </div>
+          <div>
+            <div class="item-name">${esc(src.name)}</div>
+            <div class="spec-line" style="margin-top:4px">
+              ${src.size ? `<span class="spec-size">${esc(src.size)}</span>` : ''}
+              <span class="spec-detail">${esc([src.material, src.type].filter(Boolean).join(' · '))}</span>
+            </div>
+            <div class="loc-line" style="margin-top:4px">
+              <span class="conex-tag">${esc(cx.name)}</span>
+              ${src.bin ? `<span class="bin-tag">BIN ${esc(src.bin)}</span>` : ''}
+              <span>On hand: <strong style="color:var(--color-text)">${src.qty} ${esc(src.unit || 'ea')}</strong></span>
+            </div>
+          </div>
+        </div>
+        ${src.notes ? `<div class="field-hint">${esc(src.notes)}</div>` : ''}
+      `,
+      `<button type="button" class="btn" style="flex:1" id="ro-close">Close</button>
+       <button type="button" class="btn btn-primary" style="flex:1" id="ro-unlock">Unlock ${esc(tm.name)}</button>`);
+      $('#ro-close').onclick = closeSheet;
+      $('#ro-unlock').onclick = () => openUnlockTeam(tm.id);
+      return;
+    }
+
+    const allowed = editableConexes();
+    if (!allowed.length) {
+      toast('Switch to your team or unlock a team to add items');
+      return;
+    }
+
     editing = id || null;
-    const defaultTeamId = S.activeTeam !== 'all' ? S.activeTeam : S.teams[0].id;
+    const defaultConexId = allowed.some((c) => c.id === S.activeConex) ? S.activeConex : allowed[0].id;
     const i = src
       ? { ...src }
       : {
           name: '',
           category: cat !== 'All' ? cat : (S.cats[0] || 'Gaskets'),
-          teamId: defaultTeamId,
+          conexId: defaultConexId,
           size: '', material: '', type: '', bin: '', sku: '',
           unit: 'ea', qty: 0, min: 0, notes: '', photo: ''
         };
-    if (dupFrom) {
-      i.name = `${i.name} (copy)`;
-      i.qty = 0;
-    }
+    if (dupFrom) { i.name = `${i.name} (copy)`; i.qty = 0; }
     editPhoto = i.photo || '';
     const sp = SPEC[i.category] || DEF_SPEC;
 
@@ -1252,8 +1626,11 @@
       </div>
 
       <div class="field">
-        <label for="f-team">Team &amp; Conex box</label>
-        <select id="f-team">${S.teams.map((t) => `<option value="${esc(t.id)}" ${t.id === i.teamId ? 'selected' : ''}>${esc(t.name)} — ${esc(t.conex)}</option>`).join('')}</select>
+        <label for="f-conex">Conex box</label>
+        <select id="f-conex">${allowed.map((c) => {
+          const tm = teamById(c.teamId);
+          return `<option value="${esc(c.id)}" ${c.id === i.conexId ? 'selected' : ''}>${esc(c.name)} — ${esc(tm.name)}</option>`;
+        }).join('')}</select>
       </div>
 
       <div class="form-grid-2">
@@ -1358,27 +1735,15 @@
     $('#f-photo').onclick = () => $('#photoIn').click();
     $('#f-nophoto').onclick = () => { editPhoto = ''; updatePhotoPreview(); };
     document.querySelectorAll('.lib-thumb').forEach((btn) => {
-      btn.onclick = () => {
-        editPhoto = btn.dataset.libSrc;
-        updatePhotoPreview();
-      };
+      btn.onclick = () => { editPhoto = btn.dataset.libSrc; updatePhotoPreview(); };
     });
     $('#f-cancel').onclick = closeSheet;
     $('#f-save').onclick = saveEdit;
 
     if (id) {
-      $('#f-dup').onclick = () => {
-        const it = S.items.find((x) => x.id === id);
-        openEdit(null, it);
-      };
-      $('#f-del').onclick = () => {
-        $('#editExtraActions').classList.add('hidden');
-        $('#delConfirmBar').classList.remove('hidden');
-      };
-      $('#f-del-no').onclick = () => {
-        $('#delConfirmBar').classList.add('hidden');
-        $('#editExtraActions').classList.remove('hidden');
-      };
+      $('#f-dup').onclick = () => openEdit(null, S.items.find((x) => x.id === id));
+      $('#f-del').onclick = () => { $('#editExtraActions').classList.add('hidden'); $('#delConfirmBar').classList.remove('hidden'); };
+      $('#f-del-no').onclick = () => { $('#delConfirmBar').classList.add('hidden'); $('#editExtraActions').classList.remove('hidden'); };
       $('#f-del-yes').onclick = () => {
         const idx = S.items.findIndex((x) => x.id === id);
         if (idx < 0) return;
@@ -1388,12 +1753,7 @@
         save();
         closeSheet();
         render();
-        toast(`Deleted ${it.name}`, () => {
-          S.items.splice(idx, 0, it);
-          S.log.shift();
-          save();
-          render();
-        });
+        toast(`Deleted ${it.name}`, () => { S.items.splice(idx, 0, it); S.log.shift(); save(); render(); });
       };
     }
 
@@ -1403,14 +1763,10 @@
   function saveEdit() {
     const nameEl = $('#f-name');
     const name = nameEl.value.trim();
-    if (!name) {
-      $('#fg-name').classList.add('has-error');
-      nameEl.focus();
-      return;
-    }
+    if (!name) { $('#fg-name').classList.add('has-error'); nameEl.focus(); return; }
     const data = {
       name,
-      teamId: $('#f-team').value,
+      conexId: $('#f-conex').value,
       category: $('#f-cat').value,
       bin: $('#f-bin').value.trim(),
       size: $('#f-size').value.trim(),
@@ -1446,20 +1802,17 @@
   $('#photoIn').onchange = (e) => {
     const f = e.target.files[0];
     if (!f) return;
-    compressImage(f, (dataUrl) => {
-      editPhoto = dataUrl;
-      updatePhotoPreview();
-    });
+    compressImage(f, (dataUrl) => { editPhoto = dataUrl; updatePhotoPreview(); });
     e.target.value = '';
   };
 
-  // Precision Count / Check-out / Check-in / One-Tap Conex Transfer Sheet
+  // Precision Count / Check-out / Check-in / Part Transfer Sheet
   function openCount(id) {
     const i = S.items.find((x) => x.id === id);
-    if (!i) return;
+    if (!i || !canEditConex(i.conexId)) return;
     let mode = i.qty > 0 ? 'out' : 'in';
-    const srcTeam = teamById(i.teamId);
-    const otherTeams = S.teams.filter((t) => t.id !== i.teamId);
+    const srcCx = conexById(i.conexId);
+    const otherConexes = S.conexes.filter((c) => c.id !== i.conexId);
     const notes = recentNotes();
 
     openSheet('Adjust or transfer', `
@@ -1470,7 +1823,7 @@
         <div style="min-width:0;flex:1">
           <div class="item-name" style="font-size:var(--text-sm)">${esc(i.name)}</div>
           <div class="loc-line" style="margin-top:2px">
-            ${srcTeam ? `<span class="conex-tag">${esc(srcTeam.conex)}</span>` : ''}
+            <span class="conex-tag">${esc(srcCx.name)}</span>
             ${i.bin ? `<span class="bin-tag">BIN ${esc(i.bin)}</span>` : ''}
             <span>On hand: <strong style="color:var(--color-text)">${i.qty} ${esc(i.unit || 'ea')}</strong></span>
           </div>
@@ -1485,13 +1838,10 @@
       </div>
 
       <div class="transfer-box hidden" id="xferBox">
-        ${otherTeams.length ? `
-          <label for="c-dest">Transfer from ${esc(srcTeam.conex)} to:</label>
-          <select id="c-dest">${otherTeams.map((t) => `<option value="${esc(t.id)}">${esc(t.name)} — ${esc(t.conex)}</option>`).join('')}</select>
-        ` : `
-          <div style="font-size:var(--text-xs);color:var(--color-text-secondary);margin-bottom:8px">Add a second Team &amp; Conex box in Tools to transfer stock between boxes.</div>
-          <button type="button" class="btn btn-outline btn-sm" id="xferAddTeam">${ICON.plus}Add another team</button>
-        `}
+        ${otherConexes.length ? `
+          <label for="c-dest">Transfer parts from ${esc(srcCx.name)} to:</label>
+          <select id="c-dest">${otherConexes.map((c) => `<option value="${esc(c.id)}">${esc(c.name)} — ${esc(teamById(c.teamId).name)}</option>`).join('')}</select>
+        ` : `<div style="font-size:var(--text-xs);color:var(--color-text-secondary)">Add a second Conex box in Tools to transfer parts.</div>`}
       </div>
 
       <div class="big-counter">
@@ -1526,15 +1876,15 @@
 
       if (mode === 'xfer') {
         const destSel = $('#c-dest');
-        const destTeam = destSel ? teamById(destSel.value) : null;
+        const destCx = destSel ? conexById(destSel.value) : null;
         const moveQty = Math.min(i.qty, v);
         const rem = i.qty - moveQty;
-        okBtn.disabled = !destTeam || moveQty <= 0;
+        okBtn.disabled = !destCx || moveQty <= 0;
         okBtn.style.opacity = okBtn.disabled ? '0.5' : '1';
-        $('#c-hint').innerHTML = destTeam
-          ? `<span>${esc(srcTeam.conex)}: ${i.qty} → <strong style="color:var(--color-text)">${rem} ${esc(i.unit || 'ea')}</strong> · ${esc(destTeam.conex)}: <strong style="color:var(--color-ok)">+${moveQty}</strong></span>`
-          : `<span>No destination Conex box available yet</span>`;
-        okBtn.textContent = destTeam ? `Transfer ${moveQty} to ${destTeam.conex}` : 'Transfer';
+        $('#c-hint').innerHTML = destCx
+          ? `<span>${esc(srcCx.name)}: ${i.qty} → <strong style="color:var(--color-text)">${rem} ${esc(i.unit || 'ea')}</strong> · ${esc(destCx.name)}: <strong style="color:var(--color-ok)">+${moveQty}</strong></span>`
+          : `<span>No destination Conex box available</span>`;
+        okBtn.textContent = destCx ? `Transfer ${moveQty} to ${destCx.name}` : 'Transfer';
         return;
       }
 
@@ -1565,15 +1915,8 @@
     });
 
     if ($('#c-dest')) $('#c-dest').onchange = updateHint;
-    if ($('#xferAddTeam')) $('#xferAddTeam').onclick = () => openTeamEditor(null);
-
-    document.querySelectorAll('.preset-btn').forEach((b) => {
-      b.onclick = () => { nEl.value = b.dataset.preset; updateHint(); };
-    });
-    document.querySelectorAll('.note-chip').forEach((b) => {
-      b.onclick = () => { $('#c-note').value = b.dataset.note; };
-    });
-
+    document.querySelectorAll('.preset-btn').forEach((b) => { b.onclick = () => { nEl.value = b.dataset.preset; updateHint(); }; });
+    document.querySelectorAll('.note-chip').forEach((b) => { b.onclick = () => { $('#c-note').value = b.dataset.note; }; });
     $('#c-m').onclick = () => { nEl.value = Math.max(0, (parseInt(nEl.value, 10) || 0) - 1); updateHint(); };
     $('#c-p').onclick = () => { nEl.value = (parseInt(nEl.value, 10) || 0) + 1; updateHint(); };
     nEl.oninput = updateHint;
@@ -1586,7 +1929,7 @@
       if (mode === 'xfer') {
         const destId = $('#c-dest')?.value;
         closeSheet();
-        if (destId) transferQty(i, destId, v, note);
+        if (destId) transferPartQty(i, destId, v, note);
         return;
       }
       closeSheet();
@@ -1603,7 +1946,6 @@
         <input id="cat-in" placeholder="e.g. Flanges, Studs, Clamps" autocomplete="off">
         <div class="field-error" id="cat-err">Enter a new category name.</div>
       </div>
-      <div class="field-hint">New categories appear immediately in your Stock filter strip and item form.</div>
     `,
     `<button type="button" class="btn" style="flex:1" id="cat-cancel">Cancel</button>
      <button type="button" class="btn btn-primary" style="flex:2" id="cat-save">Add category</button>`);
@@ -1632,7 +1974,6 @@
     setTimeout(() => inp.focus(), 260);
   }
 
-  // Clear Sample Items Sheet
   function openClearSamples() {
     const count = S.items.filter((i) => i.sample).length;
     openSheet('Clear sample items', `
@@ -1655,53 +1996,37 @@
     };
   }
 
-  // Restore Backup Confirmation Sheet (supports both full backups & single-Conex backups!)
   function openRestoreConfirm(parsed) {
-    const isSingleTeam = parsed.scope === 'team' && parsed.team;
-    openSheet(isSingleTeam ? 'Import Conex box' : 'Restore backup', `
+    openSheet('Restore backup', `
       <div class="callout is-warn">
         ${ICON.alert}
-        <div>${isSingleTeam
-          ? `Import <strong>${parsed.items.length} parts</strong> for <strong>${esc(parsed.team.name)} (${esc(parsed.team.conex)})</strong>? Existing items in that Conex will be updated; other teams stay untouched.`
-          : `Replace your current inventory (${S.items.length} parts) with <strong>${parsed.items.length} parts</strong> from this backup file?`}</div>
+        <div>Replace your current inventory (${S.items.length} parts) with <strong>${parsed.items.length} parts</strong> from this backup file?</div>
       </div>
     `,
     `<button type="button" class="btn" style="flex:1" id="rs-cancel">Cancel</button>
-     <button type="button" class="btn btn-primary" style="flex:2" id="rs-ok">${isSingleTeam ? 'Import Conex' : 'Restore backup'}</button>`);
+     <button type="button" class="btn btn-primary" style="flex:2" id="rs-ok">Restore backup</button>`);
 
     $('#rs-cancel').onclick = closeSheet;
     $('#rs-ok').onclick = () => {
-      if (isSingleTeam) {
-        let tm = S.teams.find((t) => t.id === parsed.team.id || (t.name === parsed.team.name && t.conex === parsed.team.conex));
-        if (!tm) {
-          tm = { id: parsed.team.id || ('team-' + uid()), name: parsed.team.name, conex: parsed.team.conex };
-          S.teams.push(tm);
-        }
-        S.items = S.items.filter((i) => i.teamId !== tm.id);
-        parsed.items.forEach((i) => S.items.push({ min: 0, unit: 'ea', ...i, teamId: tm.id }));
-        S.activeTeam = tm.id;
-        toast(`Imported ${parsed.items.length} parts into ${tm.conex}`);
-      } else {
-        S = {
-          ...S,
-          items: parsed.items.map((i) => ({ min: 0, unit: 'ea', ...i })),
-          log: Array.isArray(parsed.log) ? parsed.log : [],
-          cats: Array.isArray(parsed.cats) && parsed.cats.length ? parsed.cats : DEF_CATS.slice(),
-          teams: Array.isArray(parsed.teams) && parsed.teams.length ? parsed.teams : DEFAULT_TEAMS.map((t) => ({ ...t })),
-          photoLib: Array.isArray(parsed.photoLib) ? parsed.photoLib : S.photoLib
-        };
-        migrateState();
-        toast(`Restored ${S.items.length} items`);
-      }
+      S = {
+        ...S,
+        items: parsed.items.map((i) => ({ min: 0, unit: 'ea', ...i })),
+        log: Array.isArray(parsed.log) ? parsed.log : [],
+        cats: Array.isArray(parsed.cats) && parsed.cats.length ? parsed.cats : DEF_CATS.slice(),
+        teams: Array.isArray(parsed.teams) && parsed.teams.length ? parsed.teams : DEFAULT_TEAMS.map((t) => ({ ...t })),
+        conexes: Array.isArray(parsed.conexes) && parsed.conexes.length ? parsed.conexes : [],
+        photoLib: Array.isArray(parsed.photoLib) ? parsed.photoLib : S.photoLib
+      };
+      migrateState();
       cat = 'All';
       statusFilter = 'all';
       save();
       closeSheet();
       render();
+      toast(`Restored ${S.items.length} items`);
     };
   }
 
-  // Reset Everything Sheet — Typed "Delete" Confirmation
   function openReset() {
     openSheet('Reset everything', `
       <div class="callout is-danger">
@@ -1763,8 +2088,9 @@
       .concat(withOrder ? ['Order Qty'] : [])
       .concat(['Notes']);
     const rows = items.map((i) => {
-      const tm = teamById(i.teamId);
-      return [tm?.name || '', tm?.conex || '', i.name, i.category, i.size, i.material, i.type, i.bin, i.sku, i.qty, i.unit, i.min, { ok: 'In stock', low: 'Low', out: 'Out' }[statusOf(i)]]
+      const cx = conexById(i.conexId);
+      const tm = cx ? teamById(cx.teamId) : null;
+      return [tm?.name || '', cx?.name || '', i.name, i.category, i.size, i.material, i.type, i.bin, i.sku, i.qty, i.unit, i.min, { ok: 'In stock', low: 'Low', out: 'Out' }[statusOf(i)]]
         .concat(withOrder ? [needQty(i)] : [])
         .concat([i.notes]);
     });
@@ -1772,13 +2098,15 @@
   }
 
   function reorderText() {
-    const cur = activeTeamObj();
-    const hdr = cur ? `Pipefitter Inventory — ${cur.name} (${cur.conex}) Reorder List` : 'Pipefitter Inventory — All Conex Reorder List';
+    const hdr = S.activeConex === 'all'
+      ? 'Pipefitter Inventory — All Conex Reorder List'
+      : S.activeConex.startsWith('team:')
+        ? `Pipefitter Inventory — ${teamById(S.activeConex.slice(5)).name} Reorder List`
+        : `Pipefitter Inventory — ${conexById(S.activeConex).name} (${teamById(conexById(S.activeConex).teamId).name}) Reorder List`;
     return hdr + ' (' + new Date().toLocaleDateString() + ')\n\n' +
       lowItems().map((i) => {
-        const tm = teamById(i.teamId);
-        const cx = !cur && tm ? ` [${tm.conex}]` : '';
-        return `• ${needQty(i)} ${i.unit || 'ea'} — ${i.name}${specLine(i) ? ' (' + specLine(i) + ')' : ''}${cx}${i.bin ? ' [Bin ' + i.bin + ']' : ''}${i.sku ? ' #' + i.sku : ''}  (on hand ${i.qty})`;
+        const cx = conexById(i.conexId);
+        return `• ${needQty(i)} ${i.unit || 'ea'} — ${i.name}${specLine(i) ? ' (' + specLine(i) + ')' : ''} [${cx.name}]${i.bin ? ' [Bin ' + i.bin + ']' : ''}${i.sku ? ' #' + i.sku : ''}  (on hand ${i.qty})`;
       }).join('\n');
   }
 
@@ -1802,9 +2130,7 @@
         setTimeout(() => { if (btn.isConnected) btn.innerHTML = prev; }, 1600);
       }
       toast('Reorder list copied');
-    } catch (_) {
-      toast('Could not copy automatically');
-    }
+    } catch (_) { toast('Could not copy automatically'); }
   }
 
   // ---------- Event Delegation ----------
@@ -1816,6 +2142,7 @@
     if (t.dataset.cat) { cat = t.dataset.cat; renderStock(); return; }
     if (t.dataset.st) { statusFilter = t.dataset.st; renderStock(); return; }
     if (t.dataset.af) { actFilter = t.dataset.af; renderActivity(); return; }
+    if (t.dataset.unlockTeam) { openUnlockTeam(t.dataset.unlockTeam); return; }
     if (t.dataset.adj) {
       const card = t.closest('.item-card');
       const i = S.items.find((x) => x.id === card?.dataset.id);
@@ -1830,7 +2157,7 @@
       return;
     }
     if (t.dataset.edit) { openEdit(t.dataset.edit); return; }
-    if (t.dataset.editteam) { openTeamEditor(t.dataset.editteam); return; }
+    if (t.dataset.editconex) { openConexEditor(t.dataset.editconex); return; }
     if (t.dataset.editlib) { openLibPhotoEditor(t.dataset.editlib); return; }
     if (t.dataset.delcat) {
       const c = t.dataset.delcat;
@@ -1845,25 +2172,31 @@
     }
 
     switch (t.id) {
-      case 'teamSwitchBtn':
-        openTeamSwitcher();
-        break;
-      case 'teamAllBtn':
-        S.activeTeam = S.activeTeam === 'all' ? S.teams[0].id : 'all';
+      case 'teamSwitchBtn': openConexSwitcher(); break;
+      case 'teamAllBtn': {
+        if (S.activeConex === 'all') {
+          const mine = conexesForTeam(S.myTeamId);
+          S.activeConex = mine.length ? mine[0].id : S.conexes[0].id;
+        } else {
+          S.activeConex = 'all';
+        }
         cat = 'All';
         statusFilter = 'all';
         save();
         render();
         break;
-      case 'addTeamBtn':
-        openTeamEditor(null);
+      }
+      case 'setMyTeamBtn': openSetMyTeam(); break;
+      case 'setPinBtn': openSetPin(); break;
+      case 'relockBtn':
+        unlockedTeams.clear();
+        render();
+        toast('Other teams locked to view-only');
         break;
-      case 'addLibPhotoBtn':
-        openLibPhotoEditor(null);
-        break;
-      case 'restoreLibBtn':
-        openRestoreDefaultPhotos();
-        break;
+      case 'addConexBtn': openConexEditor(null); break;
+      case 'addTeamBtn': openAddTeam(); break;
+      case 'addLibPhotoBtn': openLibPhotoEditor(null); break;
+      case 'restoreLibBtn': openRestoreDefaultPhotos(); break;
       case 'fab':
       case 'desktopAddBtn':
       case 'emptyAddBtn':
@@ -1876,48 +2209,21 @@
         statusFilter = 'all';
         renderStock();
         break;
-      case 'sortBtn':
-        openSortSheet();
-        break;
-      case 'addCat':
-        openAddCategory();
-        break;
+      case 'sortBtn': openSortSheet(); break;
+      case 'addCat': openAddCategory(); break;
       case 'bk':
         S.lastBackup = Date.now();
         save();
-        download(`pipefitter-inventory-backup-${stamp()}.json`, JSON.stringify({ app: 'Pipefitter Inventory', v: 4, ...S }), 'application/json');
+        download(`pipefitter-inventory-backup-${stamp()}.json`, JSON.stringify({ app: 'Pipefitter Inventory', v: 5, ...S }), 'application/json');
         renderTools();
         toast('Full backup saved');
         break;
-      case 'bkTeam': {
-        const cur = activeTeamObj();
-        if (!cur) break;
-        const slug = cur.conex.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-        const items = S.items.filter((i) => i.teamId === cur.id);
-        download(`pipefitter-${slug}-${stamp()}.json`, JSON.stringify({ app: 'Pipefitter Inventory', v: 4, scope: 'team', team: cur, items }), 'application/json');
-        toast(`Exported ${cur.conex}`);
-        break;
-      }
-      case 'rs':
-        $('#fileIn').click();
-        break;
-      case 'csv':
-        exportCSV(S.items, `pipefitter-inventory-${stamp()}.csv`, false);
-        toast('CSV exported');
-        break;
-      case 'clrS':
-        openClearSamples();
-        break;
-      case 'rst':
-        openReset();
-        break;
-      case 'roCopy':
-        copyText(reorderText(), t);
-        break;
-      case 'roCsv':
-        exportCSV(lowItems(), `pipefitter-inventory-reorder-${stamp()}.csv`, true);
-        toast('Reorder CSV exported');
-        break;
+      case 'rs': $('#fileIn').click(); break;
+      case 'csv': exportCSV(S.items, `pipefitter-inventory-${stamp()}.csv`, false); toast('CSV exported'); break;
+      case 'clrS': openClearSamples(); break;
+      case 'rst': openReset(); break;
+      case 'roCopy': copyText(reorderText(), t); break;
+      case 'roCsv': exportCSV(lowItems(), `pipefitter-inventory-reorder-${stamp()}.csv`, true); toast('Reorder CSV exported'); break;
       case 'roShare':
         if (navigator.share) {
           navigator.share({ title: 'Pipefitter Inventory — Reorder List', text: reorderText() }).catch(() => {});
@@ -1937,11 +2243,7 @@
     applyTheme();
   };
   $('#toastUndo').onclick = () => {
-    if (undoState) {
-      undoState();
-      undoState = null;
-      $('#toast').classList.remove('is-open');
-    }
+    if (undoState) { undoState(); undoState = null; $('#toast').classList.remove('is-open'); }
   };
   $('#fileIn').onchange = (e) => {
     const f = e.target.files[0];
@@ -1952,9 +2254,7 @@
         const d = JSON.parse(r.result);
         if (!Array.isArray(d.items)) throw new Error('Invalid');
         openRestoreConfirm(d);
-      } catch (_) {
-        toast('That file is not a valid backup');
-      }
+      } catch (_) { toast('That file is not a valid backup'); }
     };
     r.readAsText(f);
     e.target.value = '';
