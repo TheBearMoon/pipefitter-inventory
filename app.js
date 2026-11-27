@@ -975,7 +975,7 @@
       const boltUps = Array.isArray(p.boltUps) ? p.boltUps : [];
       const boltDone = boltUps.filter((b) => b.status === 'tightened').length;
       const welds = Array.isArray(p.welds) ? p.welds : [];
-      const weldDone = welds.filter((w) => w.done).length;
+      const weldDone = welds.filter((w) => (w.status ? w.status === 'completed' : Boolean(w.done))).length;
       const progTotal = boltUps.length + welds.length;
       const progDone = boltDone + weldDone;
       const pct = progTotal ? Math.round((progDone / progTotal) * 100) : ((p.status === 'completed' || p.status === 'sold') ? 100 : 0);
@@ -1300,6 +1300,17 @@
     tightened: { label: 'Tightened', cls: 'tightened' }
   };
 
+  const WELD_STATUS_META = {
+    untouched: { label: 'Untouched', cls: 'untouched' },
+    in_progress: { label: 'In Progress', cls: 'ready' },
+    completed: { label: 'Completed', cls: 'tightened' }
+  };
+
+  function getWeldStatus(w) {
+    if (w && WELD_STATUS_META[w.status]) return w.status;
+    return w && w.done ? 'completed' : 'untouched';
+  }
+
   function openPackageDetail(pkgId, editingNoteId = null) {
     const pkg = S.packages.find((p) => p.id === pkgId);
     if (!pkg) return;
@@ -1316,7 +1327,7 @@
       : (pkg.status === 'sold' ? ['pending', 'in_progress', 'completed', 'sold'] : ['pending', 'in_progress', 'completed']);
     const doneCnt = pkg.checklist.filter((c) => c.done).length;
     const boltDoneCnt = pkg.boltUps.filter((b) => b.status === 'tightened').length;
-    const weldDoneCnt = pkg.welds.filter((w) => w.done).length;
+    const weldDoneCnt = pkg.welds.filter((w) => getWeldStatus(w) === 'completed').length;
     const stockChoices = S.items.slice().sort((a, b) => a.name.localeCompare(b.name));
 
     const checklistHtml = pkg.checklist.length
@@ -1355,17 +1366,25 @@
       : `<div class="empty-note" style="padding:8px 0">Optional — add bolt-up jobs for this package below.</div>`;
 
     const weldsHtml = pkg.welds.length
-      ? pkg.welds.map((w) => `
-          <div class="pkg-check-row ${w.done ? 'is-done' : ''}">
-            <button type="button" class="pkg-check-toggle" data-pkg-weld-chk="${esc(w.id)}" aria-pressed="${Boolean(w.done)}" aria-label="Toggle weld ${esc(w.jobNumber)}" ${isSoldLocked ? 'disabled' : ''}>
-              <span class="pkg-checkbox">${w.done ? ICON.check : ''}</span>
-              <span class="pkg-check-copy">
-                <span class="pkg-check-name pkg-weld-num">${esc(w.jobNumber)}</span>
-              </span>
-            </button>
-            ${isSoldLocked ? '' : `<button type="button" class="pkg-check-del" data-pkg-weld-del="${esc(w.id)}" aria-label="Remove weld ${esc(w.jobNumber)}">×</button>`}
-          </div>`).join('')
-      : `<div class="empty-note" style="padding:8px 0">Optional — add weld job numbers below and check them off when completed.</div>`;
+      ? pkg.welds.map((w) => {
+          const st = getWeldStatus(w);
+          const rowCls = WELD_STATUS_META[st].cls;
+          return `
+            <div class="pkg-bolt-row is-${rowCls}" data-pkg-weld-row="${esc(w.id)}">
+              <div class="pkg-bolt-head">
+                <span class="pkg-bolt-name pkg-weld-num">${esc(w.jobNumber)}</span>
+                ${isSoldLocked ? '' : `<button type="button" class="pkg-check-del" data-pkg-weld-del="${esc(w.id)}" aria-label="Remove weld ${esc(w.jobNumber)}">×</button>`}
+              </div>
+              <div class="pkg-bolt-pills" role="group" aria-label="Status for weld ${esc(w.jobNumber)}">
+                ${['untouched', 'in_progress', 'completed'].map((k) => {
+                  const m = WELD_STATUS_META[k];
+                  const active = st === k;
+                  return `<button type="button" class="pkg-bolt-pill is-${m.cls} ${active ? 'is-active' : ''}" data-pkg-weld-id="${esc(w.id)}" data-pkg-weld-val="${k}" aria-pressed="${active}" ${isSoldLocked ? 'disabled' : ''}>${m.label}</button>`;
+                }).join('')}
+              </div>
+            </div>`;
+        }).join('')
+      : `<div class="empty-note" style="padding:8px 0">Optional — add weld job numbers below and tap their status as work progresses.</div>`;
 
     const historyHtml = pkg.notes.length
       ? pkg.notes.map((n) => {
@@ -1451,7 +1470,7 @@
       <div class="pkg-section">
         <div class="pkg-section-head">
           <span>Weld Checklist <small class="pkg-opt-tag">(optional)</small></span>
-          <span class="pkg-section-count">${pkg.welds.length ? `${weldDoneCnt}/${pkg.welds.length} done` : '0'}</span>
+          <span class="pkg-section-count" id="pkg-weld-count">${pkg.welds.length ? `${weldDoneCnt}/${pkg.welds.length} done` : '0'}</span>
         </div>
         <div class="pkg-checklist">${weldsHtml}</div>
         ${isSoldLocked ? '' : `
@@ -1696,7 +1715,7 @@
     const addWeld = () => {
       const jobNumber = ($('#pkg-weld-num')?.value || '').trim();
       if (!jobNumber) { $('#pkg-weld-num')?.focus(); return; }
-      pkg.welds.push({ id: pkgUid('w'), jobNumber, done: false });
+      pkg.welds.push({ id: pkgUid('w'), jobNumber, status: 'untouched', done: false });
       pkg.updatedAt = Date.now();
       syncPackageToCloud(pkg);
       save();
@@ -1706,16 +1725,34 @@
     $('#pkg-weld-add').onclick = addWeld;
     $('#pkg-weld-num').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); addWeld(); } };
 
-    document.querySelectorAll('[data-pkg-weld-chk]').forEach((btn) => {
+    document.querySelectorAll('[data-pkg-weld-id]').forEach((btn) => {
       btn.onclick = () => {
-        const w = pkg.welds.find((x) => x.id === btn.dataset.pkgWeldChk);
-        if (!w) return;
-        w.done = !w.done;
+        if (isSoldLocked) return;
+        const wid = btn.dataset.pkgWeldId;
+        const val = btn.dataset.pkgWeldVal;
+        const w = pkg.welds.find((x) => x.id === wid);
+        if (!w || !WELD_STATUS_META[val] || getWeldStatus(w) === val) return;
+        w.status = val;
+        w.done = val === 'completed';
         pkg.updatedAt = Date.now();
+        const row = btn.closest('[data-pkg-weld-row]');
+        if (row) {
+          row.classList.remove('is-untouched', 'is-ready', 'is-tightened');
+          row.classList.add(`is-${WELD_STATUS_META[val].cls}`);
+          row.querySelectorAll('[data-pkg-weld-id]').forEach((p) => {
+            const on = p.dataset.pkgWeldVal === val;
+            p.classList.toggle('is-active', on);
+            p.setAttribute('aria-pressed', String(on));
+          });
+        }
+        const cntEl = $('#pkg-weld-count');
+        if (cntEl) {
+          const doneCnt = pkg.welds.filter((x) => getWeldStatus(x) === 'completed').length;
+          cntEl.textContent = `${doneCnt}/${pkg.welds.length} done`;
+        }
         syncPackageToCloud(pkg);
         save();
         render();
-        openPackageDetail(pkg.id);
       };
     });
     document.querySelectorAll('[data-pkg-weld-del]').forEach((btn) => {

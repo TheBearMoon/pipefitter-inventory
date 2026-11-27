@@ -1,12 +1,12 @@
-const CACHE = 'pipefitter-v57';
+const CACHE = 'pipefitter-v58';
 const PRECACHE = [
   './',
   './index.html',
-  './base.css?v=57',
-  './style.css?v=57',
-  './firebase-config.js?v=57',
-  './firebase-sync.js?v=57',
-  './app.js?v=57',
+  './base.css?v=58',
+  './style.css?v=58',
+  './firebase-config.js?v=58',
+  './firebase-sync.js?v=58',
+  './app.js?v=58',
   './manifest.webmanifest',
   './favicon.png',
   './apple-touch-icon.png',
