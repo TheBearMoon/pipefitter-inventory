@@ -1338,14 +1338,18 @@
       ? pkg.boltUps.map((b) => {
           const st = BOLT_STATUS_META[b.status] ? b.status : 'untouched';
           return `
-            <div class="pkg-bolt-row is-${st}">
-              <span class="pkg-bolt-name">${esc(b.name)}</span>
-              <select class="pkg-bolt-select is-${st}" data-pkg-bolt-st="${esc(b.id)}" aria-label="Status for ${esc(b.name)}" ${isSoldLocked ? 'disabled' : ''}>
-                <option value="untouched" ${st === 'untouched' ? 'selected' : ''}>Untouched</option>
-                <option value="ready" ${st === 'ready' ? 'selected' : ''}>Ready for tightening</option>
-                <option value="tightened" ${st === 'tightened' ? 'selected' : ''}>Tightened</option>
-              </select>
-              ${isSoldLocked ? '' : `<button type="button" class="pkg-check-del" data-pkg-bolt-del="${esc(b.id)}" aria-label="Remove ${esc(b.name)}">×</button>`}
+            <div class="pkg-bolt-row is-${st}" data-pkg-bolt-row="${esc(b.id)}">
+              <div class="pkg-bolt-head">
+                <span class="pkg-bolt-name">${esc(b.name)}</span>
+                ${isSoldLocked ? '' : `<button type="button" class="pkg-check-del" data-pkg-bolt-del="${esc(b.id)}" aria-label="Remove ${esc(b.name)}">×</button>`}
+              </div>
+              <div class="pkg-bolt-pills" role="group" aria-label="Status for ${esc(b.name)}">
+                ${['untouched', 'ready', 'tightened'].map((k) => {
+                  const m = BOLT_STATUS_META[k];
+                  const active = st === k;
+                  return `<button type="button" class="pkg-bolt-pill is-${k} ${active ? 'is-active' : ''}" data-pkg-bolt-id="${esc(b.id)}" data-pkg-bolt-val="${k}" aria-pressed="${active}" ${isSoldLocked ? 'disabled' : ''}>${m.label}</button>`;
+                }).join('')}
+              </div>
             </div>`;
         }).join('')
       : `<div class="empty-note" style="padding:8px 0">Optional — add bolt-up jobs for this package below.</div>`;
@@ -1434,7 +1438,7 @@
       <div class="pkg-section">
         <div class="pkg-section-head">
           <span>Bolt-Up Checklist <small class="pkg-opt-tag">(optional)</small></span>
-          <span class="pkg-section-count">${pkg.boltUps.length ? `${boltDoneCnt}/${pkg.boltUps.length} tightened` : '0'}</span>
+          <span class="pkg-section-count" id="pkg-bolt-count">${pkg.boltUps.length ? `${boltDoneCnt}/${pkg.boltUps.length} tightened` : '0'}</span>
         </div>
         <div class="pkg-checklist">${boltUpsHtml}</div>
         ${isSoldLocked ? '' : `
@@ -1638,16 +1642,34 @@
     $('#pkg-bolt-add').onclick = addBoltUp;
     $('#pkg-bolt-name').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); addBoltUp(); } };
 
-    document.querySelectorAll('[data-pkg-bolt-st]').forEach((sel) => {
-      sel.onchange = () => {
-        const b = pkg.boltUps.find((x) => x.id === sel.dataset.pkgBoltSt);
-        if (!b || !BOLT_STATUS_META[sel.value]) return;
-        b.status = sel.value;
+    document.querySelectorAll('[data-pkg-bolt-id]').forEach((btn) => {
+      btn.onclick = () => {
+        if (isSoldLocked) return;
+        const bid = btn.dataset.pkgBoltId;
+        const val = btn.dataset.pkgBoltVal;
+        const b = pkg.boltUps.find((x) => x.id === bid);
+        if (!b || !BOLT_STATUS_META[val] || b.status === val) return;
+        b.status = val;
         pkg.updatedAt = Date.now();
+        // Update row and counter in place so mobile scroll position never jumps
+        const row = btn.closest('[data-pkg-bolt-row]');
+        if (row) {
+          row.classList.remove('is-untouched', 'is-ready', 'is-tightened');
+          row.classList.add(`is-${val}`);
+          row.querySelectorAll('[data-pkg-bolt-id]').forEach((p) => {
+            const on = p.dataset.pkgBoltVal === val;
+            p.classList.toggle('is-active', on);
+            p.setAttribute('aria-pressed', String(on));
+          });
+        }
+        const cntEl = $('#pkg-bolt-count');
+        if (cntEl) {
+          const doneCnt = pkg.boltUps.filter((x) => x.status === 'tightened').length;
+          cntEl.textContent = `${doneCnt}/${pkg.boltUps.length} tightened`;
+        }
         syncPackageToCloud(pkg);
         save();
         render();
-        openPackageDetail(pkg.id);
       };
     });
     document.querySelectorAll('[data-pkg-bolt-del]').forEach((btn) => {
