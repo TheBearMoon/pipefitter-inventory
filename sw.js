@@ -1,9 +1,11 @@
-const CACHE = 'pipefitter-v8';
+const CACHE = 'pipefitter-v9';
 const PRECACHE = [
   './',
   './index.html',
   './base.css',
   './style.css',
+  './firebase-config.js',
+  './firebase-sync.js',
   './app.js',
   './manifest.webmanifest',
   './favicon.png',

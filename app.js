@@ -226,9 +226,21 @@
   const conexesForTeam = (tid) => S.conexes.filter((c) => c.teamId === tid);
   const myTeamObj = () => teamById(S.myTeamId);
 
+  const Cloud = window.PipefitterCloud || {
+    configured: false, ready: false, online: true, user: null, profile: null, users: [],
+    init: async () => false, saveConfig: () => {}, getSavedConfig: () => null,
+    pushMeta: async () => {}, pushConex: async () => {}, deleteConex: async () => {},
+    pushItem: async () => {}, deleteItem: async () => {}, pushLog: async () => {},
+    seedCloudIfEmpty: async () => {}
+  };
+
   function canEditConex(conexId) {
     const cx = conexById(conexId);
     if (!cx) return false;
+    if (Cloud.user && Cloud.profile) {
+      if (Cloud.profile.role === 'admin') return true;
+      return cx.teamId === Cloud.profile.teamId;
+    }
     return cx.teamId === S.myTeamId || unlockedTeams.has(cx.teamId);
   }
 
@@ -710,8 +722,49 @@
       return !curP || curP.label !== def.label || curP.src !== def.src;
     });
 
+    const cloudTitle = !Cloud.configured
+      ? 'Not connected (Local offline only)'
+      : Cloud.user && Cloud.profile
+        ? `${esc(Cloud.profile.displayName)} · ${Cloud.profile.role === 'admin' ? 'Admin' : 'Crew'}`
+        : 'Connected · Sign in required';
+    const cloudDesc = !Cloud.configured
+      ? 'Paste your free Firebase Spark config to enable logins & live sync'
+      : Cloud.user && Cloud.profile
+        ? `${Cloud.online ? 'Live sync active' : 'Offline — changes queued'} · ${esc(teamById(Cloud.profile.teamId)?.name || 'Unassigned')}`
+        : 'Sign in with your username to sync inventory across devices';
+
     $('#v-tools').innerHTML = `
       <div class="tools-grid">
+        <div class="panel">
+          <h2 class="panel-title">Cloud Sync &amp; Accounts (Firebase Spark)</h2>
+          <button type="button" class="list-item" id="cloudPrimaryBtn">
+            <span class="li-icon">${ICON.shield}</span>
+            <span class="li-text">
+              <span class="li-label"><strong>${cloudTitle}</strong></span>
+              <span class="li-desc">${cloudDesc}</span>
+            </span>
+            <span class="li-chev">${ICON.chev}</span>
+          </button>
+          ${Cloud.user && Cloud.profile?.role === 'admin' ? `
+            <button type="button" class="list-item" id="adminPanelBtn">
+              <span class="li-icon">${ICON.lock}</span>
+              <span class="li-text">
+                <span class="li-label">Admin Panel · Manage Users &amp; Roles</span>
+                <span class="li-desc">${Cloud.users.length} registered account${Cloud.users.length === 1 ? '' : 's'}</span>
+              </span>
+              <span class="li-chev">${ICON.chev}</span>
+            </button>` : ''}
+          ${Cloud.configured ? `
+            <button type="button" class="list-item" id="cloudConfigBtn">
+              <span class="li-icon">${ICON.edit}</span>
+              <span class="li-text">
+                <span class="li-label">Firebase Spark Settings</span>
+                <span class="li-desc">Update or disconnect your Firebase project config</span>
+              </span>
+              <span class="li-chev">${ICON.chev}</span>
+            </button>` : ''}
+        </div>
+
         <div class="panel">
           <h2 class="panel-title">Access &amp; Team Lock</h2>
           <button type="button" class="list-item" id="setMyTeamBtn">
@@ -896,8 +949,9 @@
   }
 
   function logIt(i, kind, from, to, note, extra) {
-    S.log.unshift({
+    const entry = {
       t: Date.now(),
+      ts: Date.now(),
       id: i.id,
       conexId: i.conexId,
       name: i.name,
@@ -905,10 +959,12 @@
       delta: to - from,
       from,
       to,
-      note: note || '',
+      note: (Cloud.profile ? `[${Cloud.profile.displayName}] ` : '') + (note || ''),
       ...(extra || {})
-    });
+    };
+    S.log.unshift(entry);
     if (S.log.length > 1000) S.log.length = 1000;
+    if (Cloud.ready && Cloud.user) Cloud.pushLog(entry).catch(() => {});
   }
 
   function setQty(i, to, kind, note) {
@@ -2186,6 +2242,12 @@
         render();
         break;
       }
+      case 'cloudPrimaryBtn':
+        if (!Cloud.configured) openFirebaseSetup();
+        else openAuthSheet();
+        break;
+      case 'adminPanelBtn': openAdminPanel(); break;
+      case 'cloudConfigBtn': openFirebaseSetup(); break;
       case 'setMyTeamBtn': openSetMyTeam(); break;
       case 'setPinBtn': openSetPin(); break;
       case 'relockBtn':
@@ -2260,6 +2322,203 @@
     e.target.value = '';
   };
 
+  // ---------- Firebase Spark Setup, Auth & Admin Panel ----------
+  function openFirebaseSetup() {
+    const cur = Cloud.getSavedConfig();
+    openSheet('Firebase Spark Cloud Sync', `
+      <div class="info-callout" style="margin-bottom:14px">
+        <span>Connect a free <strong>Firebase Spark</strong> project ($0/mo) for real usernames, Admin Panel, and live offline-first sync across phones.</span>
+      </div>
+      <div class="field" id="fg-fbcfg">
+        <label for="fb-cfg">Firebase Web Config (JSON)</label>
+        <textarea id="fb-cfg" rows="6" placeholder='{"apiKey":"...","authDomain":"...","projectId":"...","appId":"..."}' style="font-family:var(--font-mono);font-size:12px">${cur ? esc(JSON.stringify(cur, null, 2)) : ''}</textarea>
+        <div class="field-error">Paste valid JSON with apiKey and projectId.</div>
+      </div>
+      ${cur ? `<button type="button" class="btn btn-danger" style="width:100%" id="fb-disc">Disconnect Firebase (stay local offline)</button>` : ''}
+    `,
+    `<button type="button" class="btn" style="flex:1" id="fb-cancel">Cancel</button>
+     <button type="button" class="btn btn-primary" style="flex:2" id="fb-save">Save &amp; Connect</button>`);
+
+    $('#fb-cancel').onclick = closeSheet;
+    $('#fb-cfg').oninput = () => $('#fg-fbcfg').classList.remove('has-error');
+    if ($('#fb-disc')) {
+      $('#fb-disc').onclick = async () => {
+        await Cloud.signOut();
+        Cloud.saveConfig(null);
+        Cloud.configured = false;
+        Cloud.ready = false;
+        closeSheet();
+        render();
+        toast('Disconnected — running in local offline mode');
+      };
+    }
+    $('#fb-save').onclick = async () => {
+      try {
+        const parsed = JSON.parse($('#fb-cfg').value.trim());
+        if (!parsed.apiKey || !parsed.projectId) throw new Error('missing');
+        Cloud.saveConfig(parsed);
+        closeSheet();
+        toast('Connecting to Firebase Spark...');
+        const ok = await bootCloud();
+        if (ok) openAuthSheet();
+        else toast('Could not initialize Firebase — check config');
+      } catch (_) {
+        $('#fg-fbcfg').classList.add('has-error');
+      }
+    };
+  }
+
+  function openAuthSheet() {
+    if (Cloud.user && Cloud.profile) {
+      openSheet('Account', `
+        <div class="panel" style="margin-bottom:14px">
+          <div class="list-item">
+            <span class="li-icon">${ICON.shield}</span>
+            <span class="li-text">
+              <span class="li-label"><strong>${esc(Cloud.profile.displayName)}</strong> (${esc(Cloud.profile.username)})</span>
+              <span class="li-desc">Role: ${Cloud.profile.role === 'admin' ? 'Admin' : 'Crew'} · Team: ${esc(teamById(Cloud.profile.teamId)?.name || 'Unassigned')}</span>
+            </span>
+          </div>
+        </div>
+        ${Cloud.profile.role === 'admin' ? `<button type="button" class="btn btn-primary" style="width:100%;margin-bottom:10px" id="au-admin">Open Admin Panel</button>` : ''}
+        <button type="button" class="btn btn-danger" style="width:100%" id="au-out">Sign out</button>
+      `, `<button type="button" class="btn" style="flex:1" id="au-close">Done</button>`);
+      $('#au-close').onclick = closeSheet;
+      if ($('#au-admin')) $('#au-admin').onclick = () => { closeSheet(); openAdminPanel(); };
+      $('#au-out').onclick = async () => {
+        await Cloud.signOut();
+        closeSheet();
+        render();
+        toast('Signed out');
+      };
+      return;
+    }
+
+    let mode = 'signin';
+    const renderAuth = () => {
+      openSheet(mode === 'signin' ? 'Sign in to Pipefitter Inventory' : 'Create Crew Account', `
+        <div class="info-callout" style="margin-bottom:14px">
+          <span>${mode === 'signin' ? 'Sign in with your username and password to sync your team\'s Conex inventory.' : 'The first account created automatically becomes Admin. Additional accounts start as Crew.'}</span>
+        </div>
+        <div class="field" id="fg-au-u">
+          <label for="au-u">Username or Email</label>
+          <input id="au-u" type="text" placeholder="e.g. jsmith" autocomplete="username">
+        </div>
+        ${mode === 'register' ? `
+          <div class="field">
+            <label for="au-n">Display Name</label>
+            <input id="au-n" type="text" placeholder="e.g. J. Smith">
+          </div>
+          <div class="field">
+            <label for="au-t">Team</label>
+            <select id="au-t">${S.teams.map((t) => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('')}</select>
+          </div>` : ''}
+        <div class="field" id="fg-au-p">
+          <label for="au-p">Password (min 6 chars)</label>
+          <input id="au-p" type="password" placeholder="••••••" autocomplete="current-password">
+          <div class="field-error" id="au-err">Invalid credentials.</div>
+        </div>
+        <button type="button" class="btn" style="width:100%" id="au-toggle">
+          ${mode === 'signin' ? 'Need an account? Create one' : 'Already have an account? Sign in'}
+        </button>
+      `,
+      `<button type="button" class="btn" style="flex:1" id="au-cancel">Cancel</button>
+       <button type="button" class="btn btn-primary" style="flex:2" id="au-go">${mode === 'signin' ? 'Sign in' : 'Create Account'}</button>`);
+
+      $('#au-cancel').onclick = closeSheet;
+      $('#au-toggle').onclick = () => { mode = mode === 'signin' ? 'register' : 'signin'; renderAuth(); };
+      $('#au-go').onclick = async () => {
+        const u = $('#au-u').value.trim();
+        const p = $('#au-p').value;
+        if (!u || p.length < 6) {
+          $('#au-err').textContent = 'Enter a username and a password (6+ characters).';
+          $('#fg-au-p').classList.add('has-error');
+          return;
+        }
+        try {
+          if (mode === 'signin') {
+            await Cloud.signIn(u, p);
+          } else {
+            await Cloud.register(u, p, $('#au-n').value.trim() || u, $('#au-t').value);
+            await Cloud.seedCloudIfEmpty(S);
+          }
+          closeSheet();
+          render();
+          toast('Signed in as ' + (Cloud.profile?.displayName || u));
+        } catch (err) {
+          $('#au-err').textContent = err?.message || 'Sign-in failed.';
+          $('#fg-au-p').classList.add('has-error');
+        }
+      };
+    };
+    renderAuth();
+  }
+
+  function openAdminPanel() {
+    if (!Cloud.user || Cloud.profile?.role !== 'admin') {
+      toast('Admin access required');
+      return;
+    }
+    const rows = Cloud.users.map((u) => `
+      <div class="panel" style="margin-bottom:10px;padding:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div>
+            <strong>${esc(u.displayName || u.username)}</strong>
+            <div style="font-size:12px;color:var(--muted)">@${esc(u.username)}</div>
+          </div>
+          <span class="badge">${u.role === 'admin' ? 'Admin' : 'Crew'}</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <select class="adm-role" data-uid="${esc(u.uid)}">
+            <option value="crew" ${u.role !== 'admin' ? 'selected' : ''}>Crew (Own Team)</option>
+            <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin (Full Yard)</option>
+          </select>
+          <select class="adm-team" data-uid="${esc(u.uid)}">
+            ${S.teams.map((t) => `<option value="${esc(t.id)}" ${u.teamId === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+    `).join('') || '<div class="empty-note">No users registered yet.</div>';
+
+    openSheet('Admin Panel · Users & Roles', rows,
+      `<button type="button" class="btn btn-primary" style="flex:1" id="adm-done">Done</button>`);
+    $('#adm-done').onclick = closeSheet;
+    $$('.adm-role').forEach((sel) => {
+      sel.onchange = async () => {
+        await Cloud.updateUserProfile(sel.dataset.uid, { role: sel.value });
+        toast('Updated user role');
+      };
+    });
+    $$('.adm-team').forEach((sel) => {
+      sel.onchange = async () => {
+        await Cloud.updateUserProfile(sel.dataset.uid, { teamId: sel.value });
+        toast('Updated user team');
+      };
+    });
+  }
+
+  async function bootCloud() {
+    return Cloud.init({
+      onStateChange: () => {
+        if (Cloud.profile && Cloud.profile.teamId) {
+          S.myTeamId = Cloud.profile.teamId;
+        }
+        render();
+      },
+      onRemoteData: (patch) => {
+        if (patch.meta) {
+          if (Array.isArray(patch.meta.teams) && patch.meta.teams.length) S.teams = patch.meta.teams;
+          if (Array.isArray(patch.meta.photoLibrary) && patch.meta.photoLibrary.length) S.photoLib = patch.meta.photoLibrary;
+        }
+        if (Array.isArray(patch.conexes) && patch.conexes.length) S.conexes = patch.conexes;
+        if (patch.hasRemoteItems && Array.isArray(patch.items)) S.items = patch.items;
+        if (Array.isArray(patch.logs)) S.log = patch.logs;
+        save();
+        render();
+      }
+    });
+  }
+
   // ---------- Boot ----------
   (async () => {
     await openDB();
@@ -2272,6 +2531,7 @@
       save();
     }
     render();
+    bootCloud().catch(() => {});
     try {
       if (navigator.storage && navigator.storage.persist) {
         window._persisted = (await navigator.storage.persisted()) || (await navigator.storage.persist());

@@ -1,0 +1,53 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    function isAdmin() {
+      return signedIn() && userDoc().role == 'admin';
+    }
+    function myTeamId() {
+      return userDoc().teamId;
+    }
+
+    // User profiles: any signed-in user can read; users can create their own profile;
+    // only Admins can change roles or team assignments.
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.auth.uid == uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // Shared yard state document (teams, conexes, photoLibrary)
+    match /yard/{docId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    // Inventory items: everyone can view; Admins can edit any item;
+    // Crew members can only edit items in Conex boxes owned by their assigned team.
+    match /items/{itemId} {
+      allow read: if signedIn();
+      allow write: if isAdmin() || (
+        signedIn() &&
+        get(/databases/$(database)/documents/conexes/$(resource != null ? resource.data.conexId : request.resource.data.conexId)).data.teamId == myTeamId()
+      );
+    }
+
+    // Conex boxes: everyone can view; only Admins can create, rename, or transfer between teams.
+    match /conexes/{conexId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    // Activity logs: everyone can view and append; only Admins can delete/reset.
+    match /logs/{logId} {
+      allow read, create: if signedIn();
+      allow update, delete: if isAdmin();
+    }
+  }
+}
