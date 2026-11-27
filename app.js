@@ -306,6 +306,22 @@
     return S.conexes.filter((c) => canEditConex(c.id));
   }
 
+  function transferTargetsForConex(srcConexId) {
+    if (!canManageYard()) return [];
+    const others = S.conexes.filter((c) => c.id !== srcConexId);
+    if (Cloud.user && Cloud.profile) {
+      if (Cloud.profile.role === 'admin') return others;
+      if (Cloud.profile.role === 'supervisor') {
+        return others.filter((c) => {
+          const tm = teamById(c.teamId);
+          return c.supervisorId === Cloud.user.uid || (tm && tm.supervisorId === Cloud.user.uid);
+        });
+      }
+      return [];
+    }
+    return others;
+  }
+
   function activeScopeConexIds() {
     if (S.activeConex === 'all') return S.conexes.map((c) => c.id);
     if (S.activeConex.startsWith('team:')) {
@@ -661,6 +677,8 @@
             <button type="button" class="step-btn is-plus" data-adj="1" ${locked ? 'disabled' : ''} aria-label="Add 1 ${esc(i.name)}">+1</button>
             <button type="button" class="step-btn is-plus" data-adj="5" ${locked ? 'disabled' : ''} aria-label="Add 5 ${esc(i.name)}">+5</button>
           </div>
+          ${(!locked && i.qty > 0 && transferTargetsForConex(i.conexId).length > 0) ? `
+            <button type="button" class="card-xfer-btn" data-xfer="${i.id}" aria-label="Transfer ${esc(i.name)} to another crew">${ICON.xfer}<span>Transfer to another crew</span></button>` : ''}
         </div>
       </article>`;
   }
@@ -1199,11 +1217,13 @@
   }
 
   function transferPartQty(srcItem, toConexId, amount, note) {
-    if (!canEditConex(srcItem.conexId)) { toast('View only — you can only transfer from your own Conex'); return; }
+    if (!canManageYard()) { toast('Only Main Admin and Supervisors can transfer materials'); return; }
+    if (!canEditConex(srcItem.conexId)) { toast('View only — you can only transfer from your own group'); return; }
     const qty = Math.min(srcItem.qty, Math.max(0, Math.round(amount)));
     if (qty <= 0) { toast('Enter a quantity greater than 0'); return; }
-    const destCx = conexById(toConexId);
-    if (!destCx || destCx.id === srcItem.conexId) return;
+    const allowedTargets = transferTargetsForConex(srcItem.conexId);
+    const destCx = allowedTargets.find((c) => c.id === toConexId);
+    if (!destCx) { toast('You can only transfer materials within your own teams'); return; }
 
     const prevSrcQty = srcItem.qty;
     const prevLogLen = S.log.length;
@@ -2239,6 +2259,7 @@
 
       ${id ? `
         <div class="btn-row" id="editExtraActions" style="margin-top:var(--space-2)">
+          ${(i.qty > 0 && transferTargetsForConex(i.conexId).length > 0) ? `<button type="button" class="btn btn-outline" style="flex:1" id="f-xfer">${ICON.xfer}Transfer</button>` : ''}
           <button type="button" class="btn btn-outline" style="flex:1" id="f-dup">${ICON.copy}Duplicate</button>
           <button type="button" class="btn btn-danger" style="flex:1" id="f-del">${ICON.trash}Delete</button>
         </div>
@@ -2271,6 +2292,7 @@
     $('#f-save').onclick = saveEdit;
 
     if (id) {
+      if ($('#f-xfer')) $('#f-xfer').onclick = () => openCount(id, 'xfer');
       $('#f-dup').onclick = () => openEdit(null, S.items.find((x) => x.id === id));
       $('#f-del').onclick = () => { $('#editExtraActions').classList.add('hidden'); $('#delConfirmBar').classList.remove('hidden'); };
       $('#f-del-no').onclick = () => { $('#delConfirmBar').classList.add('hidden'); $('#editExtraActions').classList.remove('hidden'); };
@@ -2343,15 +2365,24 @@
   };
 
   // Precision Count / Check-out / Check-in / Part Transfer Sheet
-  function openCount(id) {
+  function openCount(id, initialMode) {
     const i = S.items.find((x) => x.id === id);
     if (!i || !canEditConex(i.conexId)) return;
-    let mode = i.qty > 0 ? 'out' : 'in';
+    const canTransfer = canManageYard();
+    let mode = (initialMode === 'xfer' && canTransfer) ? 'xfer' : (i.qty > 0 ? 'out' : 'in');
     const srcCx = conexById(i.conexId);
-    const otherConexes = S.conexes.filter((c) => c.id !== i.conexId);
+    const otherConexes = transferTargetsForConex(i.conexId)
+      .slice()
+      .sort((a, b) => String(teamById(a.teamId).name || '').localeCompare(String(teamById(b.teamId).name || ''), undefined, { numeric: true }));
     const notes = recentNotes();
+    const conexOptionLabel = (c) => {
+      const tm = teamById(c.teamId);
+      const disp = teamDisplayName(tm);
+      const hasDistinct = tm.name && disp && disp.toLowerCase() !== tm.name.toLowerCase();
+      return hasDistinct ? `${c.name} — ${tm.name} (${disp})` : `${c.name} — ${tm.name || disp}`;
+    };
 
-    openSheet('Adjust or transfer', `
+    openSheet(canTransfer ? 'Adjust or transfer' : 'Adjust quantity', `
       <div class="count-header">
         <div class="part-thumb ${i.photo ? '' : 'is-empty'}" style="width:50px;height:50px">
           ${i.photo ? `<img src="${esc(i.photo)}" alt="${esc(i.name)}">` : ICON.box}
@@ -2369,15 +2400,15 @@
       <div class="mode-tabs" role="tablist">
         <button type="button" data-mode="out" class="${mode === 'out' ? 'is-active' : ''}" role="tab" aria-selected="${mode === 'out'}">Check out</button>
         <button type="button" data-mode="in" class="${mode === 'in' ? 'is-active' : ''}" role="tab" aria-selected="${mode === 'in'}">Check in</button>
-        <button type="button" data-mode="xfer" role="tab" aria-selected="false">Transfer</button>
-        <button type="button" data-mode="set" role="tab" aria-selected="false">Set count</button>
+        ${canTransfer ? `<button type="button" data-mode="xfer" class="${mode === 'xfer' ? 'is-active' : ''}" role="tab" aria-selected="${mode === 'xfer'}">Transfer</button>` : ''}
+        <button type="button" data-mode="set" class="${mode === 'set' ? 'is-active' : ''}" role="tab" aria-selected="${mode === 'set'}">Set count</button>
       </div>
 
-      <div class="transfer-box hidden" id="xferBox">
+      <div class="transfer-box ${mode === 'xfer' ? '' : 'hidden'}" id="xferBox">
         ${otherConexes.length ? `
           <label for="c-dest">Transfer parts from ${esc(srcCx.name)} to:</label>
-          <select id="c-dest">${otherConexes.map((c) => `<option value="${esc(c.id)}">${esc(c.name)} — ${esc(teamById(c.teamId).name)}</option>`).join('')}</select>
-        ` : `<div style="font-size:var(--text-xs);color:var(--color-text-secondary)">Add a second Conex box in Tools to transfer parts.</div>`}
+          <select id="c-dest">${otherConexes.map((c) => `<option value="${esc(c.id)}">${esc(conexOptionLabel(c))}</option>`).join('')}</select>
+        ` : `<div style="font-size:var(--text-xs);color:var(--color-text-secondary)">No other Conex boxes in your group to transfer to.</div>`}
       </div>
 
       <div class="big-counter">
@@ -2816,6 +2847,7 @@
       return;
     }
     if (t.dataset.count) { openCount(t.dataset.count); return; }
+    if (t.dataset.xfer) { openCount(t.dataset.xfer, 'xfer'); return; }
     if (t.dataset.receive) {
       const i = S.items.find((x) => x.id === t.dataset.receive);
       const q = Number(t.dataset.qty) || 1;
