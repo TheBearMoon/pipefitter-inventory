@@ -1257,6 +1257,35 @@
     return !Cloud.configured && !n.authorUid;
   }
 
+  function confirmDeleteDialog(title, message, onConfirm) {
+    document.getElementById('pfConfirmModal')?.remove();
+    const wrap = document.createElement('div');
+    wrap.id = 'pfConfirmModal';
+    wrap.className = 'pf-confirm-backdrop';
+    wrap.setAttribute('role', 'alertdialog');
+    wrap.setAttribute('aria-modal', 'true');
+    wrap.innerHTML = `
+      <div class="pf-confirm-card">
+        <h3 class="pf-confirm-title">${esc(title)}</h3>
+        <p class="pf-confirm-msg">${esc(message)}</p>
+        <div class="pf-confirm-actions">
+          <button type="button" class="btn" id="pfConfirmCancel">Cancel</button>
+          <button type="button" class="btn btn-danger" id="pfConfirmOk">Delete</button>
+        </div>
+      </div>`;
+    const close = () => {
+      document.removeEventListener('keydown', onKey);
+      wrap.remove();
+    };
+    const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } };
+    document.addEventListener('keydown', onKey);
+    wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+    document.body.appendChild(wrap);
+    wrap.querySelector('#pfConfirmCancel').onclick = close;
+    wrap.querySelector('#pfConfirmOk').onclick = () => { close(); onConfirm(); };
+    wrap.querySelector('#pfConfirmCancel').focus();
+  }
+
   const BOLT_STATUS_META = {
     untouched: { label: 'Untouched', cls: 'untouched' },
     ready: { label: 'Ready for tightening', cls: 'ready' },
@@ -1475,12 +1504,20 @@
     document.querySelectorAll('[data-pkg-chk-del]').forEach((btn) => {
       btn.onclick = () => {
         const cid = btn.dataset.pkgChkDel;
-        pkg.checklist = pkg.checklist.filter((c) => c.id !== cid);
-        pkg.updatedAt = Date.now();
-        syncPackageToCloud(pkg);
-        save();
-        render();
-        openPackageDetail(pkg.id);
+        const entry = pkg.checklist.find((c) => c.id === cid);
+        if (!entry) return;
+        confirmDeleteDialog(
+          'Delete Material?',
+          `Are you sure you want to delete "${entry.name}" from this package?`,
+          () => {
+            pkg.checklist = pkg.checklist.filter((c) => c.id !== cid);
+            pkg.updatedAt = Date.now();
+            syncPackageToCloud(pkg);
+            save();
+            render();
+            openPackageDetail(pkg.id);
+          }
+        );
       };
     });
 
@@ -1557,12 +1594,21 @@
     });
     document.querySelectorAll('[data-pkg-bolt-del]').forEach((btn) => {
       btn.onclick = () => {
-        pkg.boltUps = pkg.boltUps.filter((x) => x.id !== btn.dataset.pkgBoltDel);
-        pkg.updatedAt = Date.now();
-        syncPackageToCloud(pkg);
-        save();
-        render();
-        openPackageDetail(pkg.id);
+        const bid = btn.dataset.pkgBoltDel;
+        const entry = pkg.boltUps.find((x) => x.id === bid);
+        if (!entry) return;
+        confirmDeleteDialog(
+          'Delete Bolt-Up?',
+          `Are you sure you want to delete "${entry.name}" from the Bolt-Up Checklist?`,
+          () => {
+            pkg.boltUps = pkg.boltUps.filter((x) => x.id !== bid);
+            pkg.updatedAt = Date.now();
+            syncPackageToCloud(pkg);
+            save();
+            render();
+            openPackageDetail(pkg.id);
+          }
+        );
       };
     });
 
@@ -1594,12 +1640,21 @@
     });
     document.querySelectorAll('[data-pkg-weld-del]').forEach((btn) => {
       btn.onclick = () => {
-        pkg.welds = pkg.welds.filter((x) => x.id !== btn.dataset.pkgWeldDel);
-        pkg.updatedAt = Date.now();
-        syncPackageToCloud(pkg);
-        save();
-        render();
-        openPackageDetail(pkg.id);
+        const wid = btn.dataset.pkgWeldDel;
+        const entry = pkg.welds.find((x) => x.id === wid);
+        if (!entry) return;
+        confirmDeleteDialog(
+          'Delete Weld?',
+          `Are you sure you want to delete weld "${entry.jobNumber}" from the Weld Checklist?`,
+          () => {
+            pkg.welds = pkg.welds.filter((x) => x.id !== wid);
+            pkg.updatedAt = Date.now();
+            syncPackageToCloud(pkg);
+            save();
+            render();
+            openPackageDetail(pkg.id);
+          }
+        );
       };
     });
 
