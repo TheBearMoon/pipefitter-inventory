@@ -2612,7 +2612,10 @@
     if (!isAdmin && !isSup) return;
     const role = isAdmin ? (defaultRole || 'crew') : 'crew';
     const sups = Cloud.supervisors ? Cloud.supervisors() : [];
-    const teamOpts = S.teams.map((t) => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
+    const nextLetter = String.fromCharCode(65 + S.teams.length);
+    const nextConexNum = S.conexes.length + 1;
+    const teamOpts = S.teams.map((t) => `<option value="${esc(t.id)}">${esc(teamDisplayName(t))}</option>`).join('')
+      + `<option value="__new__" ${!S.teams.length ? 'selected' : ''}>+ Create new team (e.g. Crew ${esc(nextLetter)})</option>`;
 
     openSheet(role === 'supervisor' ? 'Create Supervisor Account' : 'Create Crew Account', `
       <div class="field">
@@ -2639,11 +2642,27 @@
         <div class="field">
           <label for="ca-tm">Assigned Team</label>
           <select id="ca-tm">${teamOpts}</select>
+        </div>
+        <div class="field" id="fg-ca-newtm" style="display:${!S.teams.length ? 'block' : 'none'}">
+          <label for="ca-newtm">New Team Name</label>
+          <input id="ca-newtm" type="text" value="Crew ${esc(nextLetter)}" placeholder="e.g. Crew ${esc(nextLetter)}, Turnaround" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="ca-newcx">New Conex Box (optional)</label>
+          <input id="ca-newcx" type="text" placeholder="Leave blank to skip, or e.g. Conex ${nextConexNum}" autocomplete="off">
         </div>` : ''}
       <div class="field-error" id="ca-err" style="display:none"></div>
     `,
     `<button type="button" class="btn" style="flex:1" id="ca-cancel">Cancel</button>
      <button type="button" class="btn btn-primary" style="flex:2" id="ca-go">Create ${role === 'supervisor' ? 'Supervisor' : 'Crew'}</button>`);
+
+    if ($('#ca-tm') && $('#fg-ca-newtm')) {
+      $('#ca-tm').onchange = () => {
+        const creating = $('#ca-tm').value === '__new__';
+        $('#fg-ca-newtm').style.display = creating ? 'block' : 'none';
+        if (creating) $('#ca-newtm')?.focus();
+      };
+    }
 
     $('#ca-cancel').onclick = () => { closeSheet(); openAdminPanel(); };
     $('#ca-go').onclick = async () => {
@@ -2655,16 +2674,41 @@
         $('#ca-err').style.display = 'block';
         return;
       }
+      const supId = role === 'crew' ? (isSup ? Cloud.user.uid : ($('#ca-sup')?.value || '')) : '';
+      let teamId = role === 'crew' ? ($('#ca-tm')?.value || S.teams[0]?.id || '') : '';
+      const newTeamName = ($('#ca-newtm')?.value || '').trim();
+      const newConexName = ($('#ca-newcx')?.value || '').trim();
+
+      if (role === 'crew' && teamId === '__new__' && !newTeamName) {
+        $('#ca-err').textContent = 'Enter a name for the new team.';
+        $('#ca-err').style.display = 'block';
+        $('#ca-newtm')?.focus();
+        return;
+      }
+
       try {
+        if (role === 'crew' && teamId === '__new__') {
+          const nt = { id: 'team-' + uid(), name: newTeamName, supervisorId: supId };
+          S.teams.push(nt);
+          await Cloud.pushTeam(nt);
+          teamId = nt.id;
+        }
+        if (role === 'crew' && newConexName && teamId) {
+          const nc = { id: 'conex-' + uid(), name: newConexName, teamId, supervisorId: supId };
+          S.conexes.push(nc);
+          await Cloud.pushConex(nc);
+        }
         await Cloud.createManagedAccount({
           username,
           password,
           displayName,
           role,
-          supervisorId: role === 'crew' ? (isSup ? Cloud.user.uid : ($('#ca-sup')?.value || '')) : '',
-          teamId: role === 'crew' ? ($('#ca-tm')?.value || S.teams[0]?.id || '') : ''
+          supervisorId: supId,
+          teamId
         });
+        save();
         closeSheet();
+        render();
         toast(`Created ${role === 'supervisor' ? 'Supervisor' : 'Crew'} account: ${displayName}`);
         openAdminPanel();
       } catch (err) {
