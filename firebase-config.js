@@ -8,3 +8,6 @@ window.FIREBASE_CONFIG = {
   appId: "1:159817288990:web:14466acbc42fb11e400d0f",
   measurementId: "G-BL72D8VZ6V"
 };
+
+// Serverless password-reset endpoint for Main Admin and Supervisors (Vercel Hobby)
+window.PIPEFITTER_RESET_API_URL = "https://pipefitter-inventory.vercel.app/api/reset-password";
