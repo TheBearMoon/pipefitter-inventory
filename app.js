@@ -1286,7 +1286,7 @@
                 <span>${esc(n.author || 'User')}</span>
                 <span class="pkg-hist-right">
                   <span>${esc(fmtDateTime(n.ts))}${n.editedAt ? ' · Edited' : ''}</span>
-                  ${editable ? `<button type="button" class="pkg-note-edit-link" data-edit-note="${esc(n.id)}" aria-label="Edit your note">Edit</button>` : ''}
+                  ${editable ? `<button type="button" class="pkg-note-edit-link" data-edit-note="${esc(n.id)}" aria-label="Edit your note">Edit</button><button type="button" class="pkg-note-del-link" data-del-note="${esc(n.id)}" aria-label="Delete your note">Delete</button>` : ''}
                 </span>
               </div>
             </div>`;
@@ -1480,9 +1480,35 @@
     };
     $('#pkg-note-post').onclick = postNote;
 
-    // Edit own posted note
+    // Edit / delete own posted note
     document.querySelectorAll('[data-edit-note]').forEach((btn) => {
       btn.onclick = () => openPackageDetail(pkg.id, btn.dataset.editNote);
+    });
+    document.querySelectorAll('[data-del-note]').forEach((btn) => {
+      btn.onclick = () => {
+        if (btn.dataset.armed !== '1') {
+          btn.dataset.armed = '1';
+          btn.textContent = 'Confirm?';
+          btn.classList.add('is-armed');
+          setTimeout(() => {
+            if (btn.isConnected && btn.dataset.armed === '1') {
+              btn.dataset.armed = '';
+              btn.textContent = 'Delete';
+              btn.classList.remove('is-armed');
+            }
+          }, 3500);
+          return;
+        }
+        const entry = pkg.notes.find((x) => x.id === btn.dataset.delNote);
+        if (!entry || !canEditPackageNote(entry)) return;
+        pkg.notes = pkg.notes.filter((x) => x.id !== entry.id);
+        pkg.updatedAt = Date.now();
+        syncPackageToCloud(pkg);
+        save();
+        render();
+        toast('Note deleted');
+        openPackageDetail(pkg.id);
+      };
     });
     if ($('#pkg-note-edit-in')) {
       const editIn = $('#pkg-note-edit-in');
