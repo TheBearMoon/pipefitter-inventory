@@ -767,47 +767,52 @@
         ? `${Cloud.online ? 'Live sync active' : 'Offline — changes queued'} · ${Cloud.profile.role === 'admin' ? 'Full Yard' : Cloud.profile.role === 'supervisor' ? 'Own Teams Group' : esc(teamById(Cloud.profile.teamId)?.name || 'Unassigned')}`
         : 'Sign in with your username to sync inventory across devices';
 
-    $('#v-tools').innerHTML = `
-      <div class="tools-grid">
-        <div class="panel">
-          <h2 class="panel-title">Cloud Sync &amp; Accounts (Firebase Spark)</h2>
-          <button type="button" class="list-item" id="cloudPrimaryBtn">
-            <span class="li-icon">${ICON.shield}</span>
-            <span class="li-text">
-              <span class="li-label"><strong>${cloudTitle}</strong></span>
-              <span class="li-desc">${cloudDesc}</span>
-            </span>
-            <span class="li-chev">${ICON.chev}</span>
-          </button>
-          ${Cloud.user && (Cloud.profile?.role === 'admin' || Cloud.profile?.role === 'supervisor') ? `
-            <button type="button" class="list-item" id="toolsSuperViewBtn">
-              <span class="li-icon">${ICON.grid}</span>
-              <span class="li-text">
-                <span class="li-label">${Cloud.profile?.role === 'admin' ? 'Admin Super View' : 'Super View'}</span>
-                <span class="li-desc">${Cloud.profile?.role === 'admin' ? 'Browse all crews and search materials across every Conex box' : 'Browse your crews and search materials across your Conex boxes'}</span>
-              </span>
-              <span class="li-chev">${ICON.chev}</span>
-            </button>` : ''}
-          ${Cloud.user && (Cloud.profile?.role === 'admin' || Cloud.profile?.role === 'supervisor') ? `
-            <button type="button" class="list-item" id="adminPanelBtn">
-              <span class="li-icon">${ICON.lock}</span>
-              <span class="li-text">
-                <span class="li-label">${Cloud.profile.role === 'admin' ? 'Main Admin Panel · Supervisors, Teams &amp; Users' : 'Supervisor Panel · Create Crew &amp; Manage Group'}</span>
-                <span class="li-desc">${Cloud.users.length} account${Cloud.users.length === 1 ? '' : 's'} in scope</span>
-              </span>
-              <span class="li-chev">${ICON.chev}</span>
-            </button>` : ''}
-          ${Cloud.configured ? `
-            <button type="button" class="list-item" id="cloudConfigBtn">
-              <span class="li-icon">${ICON.firebase}</span>
-              <span class="li-text">
-                <span class="li-label">Firebase Spark Settings</span>
-                <span class="li-desc">Update or disconnect your Firebase project config</span>
-              </span>
-              <span class="li-chev">${ICON.chev}</span>
-            </button>` : ''}
-        </div>
+    const isCloudAdmin = Boolean(Cloud.user && Cloud.profile?.role === 'admin');
+    const adminSupervisors = isCloudAdmin
+      ? Cloud.users
+          .filter((u) => u.role === 'supervisor')
+          .slice()
+          .sort((a, b) => String(a.displayName || a.username || '').localeCompare(String(b.displayName || b.username || '')))
+      : [];
+    const unassignedTeams = isCloudAdmin ? S.teams.filter((tm) => !tm.supervisorId) : [];
+    const unassignedTeamIds = new Set(unassignedTeams.map((tm) => tm.id));
+    const unassignedConexes = isCloudAdmin
+      ? S.conexes.filter((c) => !c.supervisorId || unassignedTeamIds.has(c.teamId))
+      : [];
 
+    const teamsAndConexPanels = isCloudAdmin ? `
+        <div class="panel">
+          <h2 class="panel-title">Supervisors</h2>
+          ${adminSupervisors.length ? adminSupervisors.map((sup) => {
+            const supTeams = S.teams.filter((tm) => tm.supervisorId === sup.uid);
+            const supTeamIds = new Set(supTeams.map((tm) => tm.id));
+            const supBoxes = S.conexes.filter((c) => supTeamIds.has(c.teamId) || c.supervisorId === sup.uid);
+            const supBoxIds = new Set(supBoxes.map((b) => b.id));
+            const partCnt = S.items.filter((i) => supBoxIds.has(i.conexId)).length;
+            return `
+              <button type="button" class="list-item" data-opensup="${esc(sup.uid)}">
+                <span class="li-icon">${ICON.shield}</span>
+                <span class="li-text">
+                  <span class="li-label">${esc(sup.displayName || sup.username)} <span class="conex-pill" style="margin-left:6px">${supTeams.length} TEAM${supTeams.length === 1 ? '' : 'S'} · ${supBoxes.length} CONEX</span></span>
+                  <span class="li-desc">@${esc(sup.username || '')} · ${partCnt} part${partCnt === 1 ? '' : 's'} · Tap to view teams &amp; Conex boxes</span>
+                </span>
+                <span class="li-chev">${ICON.chev}</span>
+              </button>`;
+          }).join('') : '<div class="empty-note" style="padding:12px 16px">No supervisors yet. Create one in Main Admin Panel.</div>'}
+          ${(unassignedTeams.length || unassignedConexes.length) ? (() => {
+            const uBoxIds = new Set(unassignedConexes.map((b) => b.id));
+            const uParts = S.items.filter((i) => uBoxIds.has(i.conexId)).length;
+            return `
+              <button type="button" class="list-item" data-opensup="__none__">
+                <span class="li-icon">${ICON.conex}</span>
+                <span class="li-text">
+                  <span class="li-label">Unassigned <span class="conex-pill" style="margin-left:6px">${unassignedTeams.length} TEAM${unassignedTeams.length === 1 ? '' : 'S'} · ${unassignedConexes.length} CONEX</span></span>
+                  <span class="li-desc">${uParts} part${uParts === 1 ? '' : 's'} · Tap to manage unassigned teams &amp; Conex boxes</span>
+                </span>
+                <span class="li-chev">${ICON.chev}</span>
+              </button>`;
+          })() : ''}
+        </div>` : `
         <div class="panel">
           <h2 class="panel-title">Teams</h2>
           ${S.teams.length ? S.teams.map((tm) => {
@@ -860,7 +865,50 @@
               </span>
               <span class="li-chev">${ICON.chev}</span>
             </button>` : ''}
+        </div>`;
+
+    $('#v-tools').innerHTML = `
+      <div class="tools-grid">
+        <div class="panel">
+          <h2 class="panel-title">Cloud Sync &amp; Accounts (Firebase Spark)</h2>
+          <button type="button" class="list-item" id="cloudPrimaryBtn">
+            <span class="li-icon">${ICON.shield}</span>
+            <span class="li-text">
+              <span class="li-label"><strong>${cloudTitle}</strong></span>
+              <span class="li-desc">${cloudDesc}</span>
+            </span>
+            <span class="li-chev">${ICON.chev}</span>
+          </button>
+          ${Cloud.user && (Cloud.profile?.role === 'admin' || Cloud.profile?.role === 'supervisor') ? `
+            <button type="button" class="list-item" id="toolsSuperViewBtn">
+              <span class="li-icon">${ICON.grid}</span>
+              <span class="li-text">
+                <span class="li-label">${Cloud.profile?.role === 'admin' ? 'Admin Super View' : 'Super View'}</span>
+                <span class="li-desc">${Cloud.profile?.role === 'admin' ? 'Browse all crews and search materials across every Conex box' : 'Browse your crews and search materials across your Conex boxes'}</span>
+              </span>
+              <span class="li-chev">${ICON.chev}</span>
+            </button>` : ''}
+          ${Cloud.user && (Cloud.profile?.role === 'admin' || Cloud.profile?.role === 'supervisor') ? `
+            <button type="button" class="list-item" id="adminPanelBtn">
+              <span class="li-icon">${ICON.lock}</span>
+              <span class="li-text">
+                <span class="li-label">${Cloud.profile.role === 'admin' ? 'Main Admin Panel · Supervisors, Teams &amp; Users' : 'Supervisor Panel · Create Crew &amp; Manage Group'}</span>
+                <span class="li-desc">${Cloud.users.length} account${Cloud.users.length === 1 ? '' : 's'} in scope</span>
+              </span>
+              <span class="li-chev">${ICON.chev}</span>
+            </button>` : ''}
+          ${Cloud.configured ? `
+            <button type="button" class="list-item" id="cloudConfigBtn">
+              <span class="li-icon">${ICON.firebase}</span>
+              <span class="li-text">
+                <span class="li-label">Firebase Spark Settings</span>
+                <span class="li-desc">Update or disconnect your Firebase project config</span>
+              </span>
+              <span class="li-chev">${ICON.chev}</span>
+            </button>` : ''}
         </div>
+
+        ${teamsAndConexPanels}
 
         <div class="panel">
           <h2 class="panel-title">Hardware Photo Library</h2>
@@ -1413,8 +1461,97 @@
     };
   }
 
+  // Admin Supervisor Drill-down Sheet (shows Supervisor's Teams & corresponding Conex boxes)
+  function openSupervisorDrilldown(supUid) {
+    if (!isMainAdmin()) return;
+    const isUnassigned = supUid === '__none__';
+    const sup = isUnassigned ? null : Cloud.users.find((u) => u.uid === supUid);
+    const title = isUnassigned ? 'Unassigned Teams & Conex' : (sup?.displayName || sup?.username || 'Supervisor');
+    const supTeams = S.teams.filter((tm) => (isUnassigned ? !tm.supervisorId : tm.supervisorId === supUid));
+    const supTeamIds = new Set(supTeams.map((tm) => tm.id));
+    const supBoxes = S.conexes.filter((c) => supTeamIds.has(c.teamId) || (isUnassigned ? !c.supervisorId : c.supervisorId === supUid));
+    const orphanBoxes = supBoxes.filter((c) => !supTeamIds.has(c.teamId));
+    const totalParts = S.items.filter((i) => supBoxes.some((b) => b.id === i.conexId)).length;
+
+    const subtitle = isUnassigned
+      ? `${supTeams.length} team${supTeams.length === 1 ? '' : 's'} · ${supBoxes.length} Conex · ${totalParts} part${totalParts === 1 ? '' : 's'}`
+      : `@${sup?.username || ''} · ${supTeams.length} team${supTeams.length === 1 ? '' : 's'} · ${supBoxes.length} Conex · ${totalParts} part${totalParts === 1 ? '' : 's'}`;
+
+    openSheet(title, `
+      <div class="info-callout" style="margin-bottom:var(--space-3)">
+        <span>${esc(subtitle)}</span>
+      </div>
+      ${supTeams.length ? supTeams.map((tm) => {
+        const boxes = conexesForTeam(tm.id);
+        const boxIds = new Set(boxes.map((b) => b.id));
+        const teamParts = S.items.filter((i) => boxIds.has(i.conexId)).length;
+        return `
+          <div class="sd-group">
+            <button type="button" class="list-item sd-team-row" data-sd-team="${esc(tm.id)}">
+              <span class="li-icon">${ICON.shield}</span>
+              <span class="li-text">
+                <span class="li-label"><strong>${esc(teamDisplayName(tm))}</strong> <span class="conex-pill" style="margin-left:6px">${boxes.length} CONEX</span></span>
+                <span class="li-desc">${teamParts} part${teamParts === 1 ? '' : 's'} · Tap to edit or delete team</span>
+              </span>
+              <span class="li-chev">${ICON.chev}</span>
+            </button>
+            <div class="sd-conex-list">
+              ${boxes.length ? boxes.map((c) => {
+                const cnt = S.items.filter((i) => i.conexId === c.id).length;
+                const low = S.items.filter((i) => i.conexId === c.id && statusOf(i) !== 'ok').length;
+                return `
+                  <button type="button" class="list-item sd-conex-row" data-sd-conex="${esc(c.id)}">
+                    <span class="li-icon">${ICON.conex}</span>
+                    <span class="li-text">
+                      <span class="li-label">${esc(c.name)}</span>
+                      <span class="li-desc">${cnt} part${cnt === 1 ? '' : 's'}${low ? ` · ${low} low/out` : ''} · Tap to edit, transfer, or delete</span>
+                    </span>
+                    <span class="li-chev">${ICON.chev}</span>
+                  </button>`;
+              }).join('') : '<div class="sd-empty-conex">No Conex box assigned to this team yet.</div>'}
+            </div>
+          </div>`;
+      }).join('') : '<div class="empty-note" style="padding:12px 4px">No teams assigned to this supervisor yet.</div>'}
+      ${orphanBoxes.length ? `
+        <div class="sd-group">
+          <div class="sd-orphan-hdr">Conex boxes without a matching team</div>
+          <div class="sd-conex-list">
+            ${orphanBoxes.map((c) => {
+              const cnt = S.items.filter((i) => i.conexId === c.id).length;
+              return `
+                <button type="button" class="list-item sd-conex-row" data-sd-conex="${esc(c.id)}">
+                  <span class="li-icon">${ICON.conex}</span>
+                  <span class="li-text">
+                    <span class="li-label">${esc(c.name)}</span>
+                    <span class="li-desc">${cnt} part${cnt === 1 ? '' : 's'} · Tap to edit, transfer, or delete</span>
+                  </span>
+                  <span class="li-chev">${ICON.chev}</span>
+                </button>`;
+            }).join('')}
+          </div>
+        </div>` : ''}
+      <div class="sd-actions">
+        <button type="button" class="btn btn-outline" id="sd-add-team">${ICON.plus}Add team</button>
+        ${(supTeams.length || S.teams.length) ? `<button type="button" class="btn btn-outline" id="sd-add-conex">${ICON.conex}Add Conex box</button>` : ''}
+      </div>
+    `,
+    `<button type="button" class="btn btn-primary" style="flex:1" id="sd-done">Done</button>`);
+
+    $('#sd-done').onclick = closeSheet;
+    $('#sd-add-team').onclick = () => openAddTeam(isUnassigned ? '' : supUid);
+    if ($('#sd-add-conex')) {
+      $('#sd-add-conex').onclick = () => openConexEditor(null, isUnassigned ? '' : supUid);
+    }
+    $$('[data-sd-team]', $('#sheetBody')).forEach((btn) => {
+      btn.onclick = () => openTeamEditor(btn.dataset.sdTeam);
+    });
+    $$('[data-sd-conex]', $('#sheetBody')).forEach((btn) => {
+      btn.onclick = () => openConexEditor(btn.dataset.sdConex);
+    });
+  }
+
   // Add / Edit Conex Box Sheet
-  function openConexEditor(conexId) {
+  function openConexEditor(conexId, presetSupId) {
     if (!canManageYard()) {
       toast('Only Supervisors and Main Admin can manage Conex boxes');
       return;
@@ -1422,6 +1559,15 @@
     const existing = conexId ? conexById(conexId) : null;
     const nextNum = S.conexes.length + 1;
     const partCount = existing ? S.items.filter((i) => i.conexId === existing.id).length : 0;
+    const teamChoices = (!existing && presetSupId)
+      ? (() => {
+          const supT = S.teams.filter((t) => t.supervisorId === presetSupId);
+          return supT.length ? supT : S.teams;
+        })()
+      : S.teams;
+    const defaultTeamId = existing
+      ? existing.teamId
+      : (presetSupId && teamChoices.length ? teamChoices[0].id : S.myTeamId);
 
     openSheet(existing ? `Manage ${existing.name}` : 'Add Conex box', `
       <div class="field" id="fg-cname">
@@ -1431,7 +1577,7 @@
       </div>
       <div class="field">
         <label for="cx-team">Assigned team</label>
-        <select id="cx-team">${S.teams.map((t) => `<option value="${esc(t.id)}" ${(existing ? existing.teamId : S.myTeamId) === t.id ? 'selected' : ''}>${esc(teamDisplayName(t))}</option>`).join('')}</select>
+        <select id="cx-team">${teamChoices.map((t) => `<option value="${esc(t.id)}" ${defaultTeamId === t.id ? 'selected' : ''}>${esc(teamDisplayName(t))}</option>`).join('')}</select>
       </div>
       ${existing && S.teams.length > 1 ? `
         <button type="button" class="btn btn-outline" style="width:100%;margin-bottom:var(--space-2)" id="cx-xfer">${ICON.xfer}Transfer ${esc(existing.name)} to another team</button>` : ''}
@@ -1596,13 +1742,14 @@
   }
 
   // Add Team Sheet
-  function openAddTeam() {
+  function openAddTeam(presetSupId) {
     if (!canManageYard()) {
       toast('Only Supervisors and Main Admin can add teams');
       return;
     }
     const nextLetter = String.fromCharCode(65 + S.teams.length);
-    openSheet('Add team', `
+    const presetSup = presetSupId ? Cloud.users.find((u) => u.uid === presetSupId) : null;
+    openSheet(presetSup ? `Add team · ${presetSup.displayName || presetSup.username}` : 'Add team', `
       <div class="field" id="fg-tname">
         <label for="t-name">Team / Crew name</label>
         <input id="t-name" placeholder="e.g. Crew ${nextLetter}, Turnaround, Fab Shop" autocomplete="off">
@@ -1622,7 +1769,7 @@
       const name = $('#t-name').value.trim();
       const conexName = $('#t-conex').value.trim();
       if (!name) { $('#fg-tname').classList.add('has-error'); $('#t-name').focus(); return; }
-      const supId = Cloud.profile?.role === 'supervisor' ? Cloud.user.uid : '';
+      const supId = Cloud.profile?.role === 'supervisor' ? Cloud.user.uid : (presetSupId || '');
       const nt = { id: 'team-' + uid(), name, supervisorId: supId };
       S.teams.push(nt);
       if (Cloud.ready && Cloud.user) {
@@ -2402,6 +2549,7 @@
       return;
     }
     if (t.dataset.edit) { openEdit(t.dataset.edit); return; }
+    if (t.dataset.opensup) { openSupervisorDrilldown(t.dataset.opensup); return; }
     if (t.dataset.editconex) { openConexEditor(t.dataset.editconex); return; }
     if (t.dataset.editteam) { openTeamEditor(t.dataset.editteam); return; }
     if (t.dataset.editlib) { openLibPhotoEditor(t.dataset.editlib); return; }
