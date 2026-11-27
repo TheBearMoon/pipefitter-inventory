@@ -3433,8 +3433,7 @@ button.list-item:active {
 }
 
 .pkg-add-mat select,
-.pkg-add-mat input,
-.pkg-note-form input {
+.pkg-add-mat input {
   height: 40px;
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border);
@@ -3452,15 +3451,36 @@ button.list-item:active {
 
 .pkg-add-mat-btn,
 .pkg-note-btn {
-  height: 40px;
-  padding: 0 14px;
+  height: 36px;
+  padding: 0 16px;
 }
 
 .pkg-note-form {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
+  flex-direction: column;
   gap: 6px;
   margin-bottom: 10px;
+}
+
+.pkg-note-form textarea {
+  width: 100%;
+  min-height: 84px;
+  max-height: 220px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: 9px 11px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+  resize: vertical;
+  overflow-y: auto;
+}
+
+.pkg-note-form-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .pkg-history-list {
@@ -3528,15 +3548,21 @@ button.list-item:active {
   gap: 6px;
 }
 
-.pkg-note-edit-form input {
+.pkg-note-edit-form input,
+.pkg-note-edit-form textarea {
   width: 100%;
-  height: 36px;
+  min-height: 84px;
+  max-height: 220px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-primary);
   background: var(--color-surface);
   color: var(--color-text);
-  padding: 0 10px;
-  font-size: 13px;
+  padding: 9px 11px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+  resize: vertical;
+  overflow-y: auto;
 }
 
 .pkg-note-edit-actions {

@@ -1271,7 +1271,7 @@
             return `
               <div class="pkg-hist-item is-note is-editing">
                 <div class="pkg-note-edit-form">
-                  <input id="pkg-note-edit-in" type="text" value="${esc(n.text)}" aria-label="Edit note">
+                  <textarea id="pkg-note-edit-in" rows="3" aria-label="Edit note">${esc(n.text)}</textarea>
                   <div class="pkg-note-edit-actions">
                     <button type="button" class="btn pkg-note-edit-btn" id="pkg-note-edit-cancel">Cancel</button>
                     <button type="button" class="btn btn-primary pkg-note-edit-btn" id="pkg-note-edit-save">Save</button>
@@ -1336,8 +1336,10 @@
           <span class="pkg-section-count">${pkg.notes.length}</span>
         </div>
         <div class="pkg-note-form">
-          <input id="pkg-note-input" type="text" placeholder="Add a note for this package…">
-          <button type="button" class="btn btn-primary pkg-note-btn" id="pkg-note-post">Post</button>
+          <textarea id="pkg-note-input" rows="3" placeholder="Add a note for this package…"></textarea>
+          <div class="pkg-note-form-actions">
+            <button type="button" class="btn btn-primary pkg-note-btn" id="pkg-note-post">Post</button>
+          </div>
         </div>
         <div class="pkg-history-list">${historyHtml}</div>
       </div>
@@ -1446,7 +1448,18 @@
     $('#pkg-mat-add').onclick = addMat;
     $('#pkg-mat-name').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); addMat(); } };
 
+    const autoGrowNote = (el) => {
+      if (!el) return;
+      el.style.height = 'auto';
+      el.style.height = Math.min(Math.max(el.scrollHeight, 84), 220) + 'px';
+    };
+
     // Post note
+    const noteIn = $('#pkg-note-input');
+    if (noteIn) {
+      noteIn.addEventListener('input', () => autoGrowNote(noteIn));
+      noteIn.onkeydown = (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); postNote(); } };
+    }
     const postNote = () => {
       const text = $('#pkg-note-input').value.trim();
       if (!text) { $('#pkg-note-input').focus(); return; }
@@ -1466,7 +1479,6 @@
       openPackageDetail(pkg.id);
     };
     $('#pkg-note-post').onclick = postNote;
-    $('#pkg-note-input').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); postNote(); } };
 
     // Edit own posted note
     document.querySelectorAll('[data-edit-note]').forEach((btn) => {
@@ -1474,6 +1486,8 @@
     });
     if ($('#pkg-note-edit-in')) {
       const editIn = $('#pkg-note-edit-in');
+      autoGrowNote(editIn);
+      editIn.addEventListener('input', () => autoGrowNote(editIn));
       editIn.focus();
       try { editIn.setSelectionRange(editIn.value.length, editIn.value.length); } catch (_) {}
       const saveNoteEdit = () => {
@@ -1493,7 +1507,7 @@
       $('#pkg-note-edit-save').onclick = saveNoteEdit;
       $('#pkg-note-edit-cancel').onclick = () => openPackageDetail(pkg.id);
       editIn.onkeydown = (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); saveNoteEdit(); }
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveNoteEdit(); }
         if (e.key === 'Escape') { e.preventDefault(); openPackageDetail(pkg.id); }
       };
     }
