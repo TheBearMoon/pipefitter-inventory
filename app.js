@@ -964,8 +964,7 @@
               <span class="li-chev">${ICON.chev}</span>
             </button>` : ''}
         </div>
-      </div>
-      <div class="tools-footer">Pipefitter Inventory · Works 100% offline · Data stays on your device</div>`;
+      </div>`;
   }
 
   // ---------- Actions & Feedback ----------
