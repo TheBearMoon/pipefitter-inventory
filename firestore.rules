@@ -22,7 +22,12 @@ service cloud.firestore {
     // - Supervisor can read/create/update Crew accounts strictly under their own supervisorId.
     // - Crew can read users in their own supervisor group and create their own initial profile.
     match /users/{uid} {
-      allow read: if isAdmin() || (signedIn() && (request.auth.uid == uid || resource.data.supervisorId == mySupId()));
+      allow read: if signedIn() && (
+        request.auth.uid == uid
+        || !exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        || isAdmin()
+        || resource.data.supervisorId == mySupId()
+      );
       allow create: if isAdmin()
         || (signedIn() && request.auth.uid == uid)
         || (isSupervisor() && request.resource.data.role == 'crew' && request.resource.data.supervisorId == request.auth.uid);
