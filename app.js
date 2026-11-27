@@ -533,7 +533,7 @@
       if (!q) return true;
       const cx = conexById(i.conexId);
       const tm = cx ? teamById(cx.teamId) : null;
-      return [i.name, i.size, i.material, i.type, i.bin, i.sku, i.category, i.notes, tm?.name, cx?.name]
+      return [i.name, i.size, i.material, i.type, i.bin, i.sku, i.category, i.notes, tm?.name, tm ? teamDisplayName(tm) : '', cx?.name]
         .join(' ')
         .toLowerCase()
         .includes(q);
@@ -610,6 +610,14 @@
     const tm = cx ? teamById(cx.teamId) : null;
     const locked = !canEditConex(i.conexId);
     const showConex = (S.activeConex === 'all' || S.activeConex.startsWith('team:')) && cx;
+    const showYardOwner = S.activeConex === 'all' && tm && Cloud.user && (Cloud.profile?.role === 'admin' || Cloud.profile?.role === 'supervisor');
+    const yardOwnerLabel = showYardOwner
+      ? (() => {
+          const disp = teamDisplayName(tm);
+          const hasDistinct = tm.name && disp && disp.toLowerCase() !== tm.name.toLowerCase();
+          return hasDistinct ? `${tm.name} · ${disp}` : (tm.name || disp);
+        })()
+      : '';
 
     return `
       <article class="item-card ${locked ? 'is-locked' : ''}" data-id="${i.id}">
@@ -629,6 +637,7 @@
               </div>` : ''}
             <div class="loc-line">
               ${showConex ? `<span class="conex-tag">${esc(cx.name)}</span>` : ''}
+              ${yardOwnerLabel ? `<span class="crew-tag">${esc(yardOwnerLabel)}</span>` : ''}
               ${locked && S.activeConex === 'all' && tm ? `<span class="lock-pill">${esc(tm.name)} · View only</span>` : ''}
               ${i.bin ? `<span class="bin-tag">BIN ${esc(i.bin)}</span>` : ''}
               <span class="loc-item">${ICON.tag}${esc(i.category)}</span>
