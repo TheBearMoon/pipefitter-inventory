@@ -965,8 +965,6 @@
     const cardsHtml = filtered.map((p) => {
       const sm = PKG_STATUS_META[p.status] || PKG_STATUS_META.pending;
       const list = Array.isArray(p.checklist) ? p.checklist : [];
-      const doneCnt = list.filter((c) => c.done).length;
-      const pct = list.length ? Math.round((doneCnt / list.length) * 100) : (p.status === 'completed' ? 100 : 0);
       const notes = Array.isArray(p.notes) ? p.notes : [];
       const noteOnly = notes.filter((n) => !n.type || n.type === 'note');
       const latestNote = noteOnly[0] || notes[0] || null;
@@ -975,6 +973,16 @@
       const boltDone = boltUps.filter((b) => b.status === 'tightened').length;
       const welds = Array.isArray(p.welds) ? p.welds : [];
       const weldDone = welds.filter((w) => w.done).length;
+      const progTotal = boltUps.length + welds.length;
+      const progDone = boltDone + weldDone;
+      const pct = progTotal ? Math.round((progDone / progTotal) * 100) : (p.status === 'completed' ? 100 : 0);
+      const progLabel = progTotal
+        ? (boltUps.length && welds.length
+            ? `${progDone} of ${progTotal} bolt-up & weld tasks done`
+            : (boltUps.length
+                ? `${boltDone} of ${boltUps.length} bolt-up${boltUps.length === 1 ? '' : 's'} tightened`
+                : `${weldDone} of ${welds.length} weld${welds.length === 1 ? '' : 's'} completed`))
+        : 'No bolt-up or weld tasks yet';
       return `
         <article class="pkg-card" data-open-pkg="${esc(p.id)}" role="button" tabindex="0" aria-label="Open package ${esc(p.name)}">
           <div class="pkg-card-head">
@@ -990,7 +998,7 @@
 
           <div class="pkg-progress-wrap">
             <div class="pkg-progress-row">
-              <span>${list.length ? `${doneCnt} of ${list.length} material${list.length === 1 ? '' : 's'} ready` : 'No materials listed yet'}</span>
+              <span>${progLabel}</span>
               <span class="pkg-pct">${pct}%</span>
             </div>
             <div class="pkg-progress-bar" aria-hidden="true">
