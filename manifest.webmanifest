@@ -1,6 +1,6 @@
 {
- "name": "EzInventory",
- "short_name": "EzInventory",
+ "name": "Pipefitter Inventory",
+ "short_name": "Pipefitter",
  "start_url": "./",
  "scope": "./",
  "display": "standalone",

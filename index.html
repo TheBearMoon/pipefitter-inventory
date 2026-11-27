@@ -5,8 +5,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
 <meta name="theme-color" content="#0f172a">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Pipefitter">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>EzInventory</title>
+<title>Pipefitter Inventory</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="favicon.png" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -161,7 +162,7 @@ nav.tabs .dot{position:absolute;top:8px;left:calc(50% + 6px);min-width:18px;heig
     <div class="brandrow">
       <div class="logo">
         <img src="icon-192.png" alt="" width="36" height="36" style="border-radius:9px">
-        <div><div id="pageTitle">EzInventory</div><div class="sub" id="pageSub">Materials on hand</div></div>
+        <div><div id="pageTitle">Pipefitter Inventory</div><div class="sub" id="pageSub">Materials on hand</div></div>
       </div>
       <button class="iconbtn" id="themeBtn" aria-label="Toggle theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg></button>
     </div>
@@ -282,7 +283,7 @@ function render(){
   ['stock','reorder','activity','tools'].forEach(v=>$('#v-'+v).classList.toggle('hidden',v!==view));
   $('#stockHead').classList.toggle('hidden',view!=='stock');
   $('#fab').classList.toggle('hidden',view!=='stock');
-  const titles={stock:['EzInventory','Materials on hand'],reorder:['Reorder','Items at or below minimum'],activity:['Activity','Check-ins, check-outs & counts'],tools:['Tools','Categories, backup & settings']};
+  const titles={stock:['Pipefitter Inventory','Materials on hand'],reorder:['Reorder','Items at or below minimum'],activity:['Activity','Check-ins, check-outs & counts'],tools:['Tools','Categories, backup & settings']};
   $('#pageTitle').textContent=titles[view][0];$('#pageSub').textContent=titles[view][1];
   const n=lowItems().length;const dot=$('#roDot');dot.textContent=n;dot.classList.toggle('hidden',!n);
   ({stock:renderStock,reorder:renderReorder,activity:renderActivity,tools:renderTools})[view]();
@@ -375,7 +376,7 @@ function renderTools(){
     ${hasSamples?`<button class="li" id="clrS"><span class="ic">${ICON.trash}</span><span class="tx">Clear sample items<small>Keep everything you added</small></span></button>`:''}
     <button class="li red" id="rst"><span class="ic">${ICON.trash}</span><span class="tx">Reset everything<small>Delete all items and history</small></span></button>
    </div>
-   <div class="sub" style="text-align:center;margin:8px 0 20px">EzInventory · Works fully offline</div>`;
+   <div class="sub" style="text-align:center;margin:8px 0 20px">Pipefitter Inventory · Works fully offline</div>`;
 }
 
 // ---------- Actions ----------
@@ -476,6 +477,17 @@ function openCount(id){
     if(mode==='set')setQty(i,v,'set',note);else setQty(i,mode==='in'?i.qty+v:i.qty-v,'adj',note)};
 }
 
+function openReset(){
+  openSheet('Reset everything',`
+   <div class="callout" style="background:var(--bad-soft);color:var(--bad)">${ICON.alert}<div>This permanently deletes all ${S.items.length} item${S.items.length===1?'':'s'} and ${S.log.length} history entr${S.log.length===1?'y':'ies'}. It cannot be undone. Consider backing up first.</div></div>
+   <div class="field"><label>Type <b style="color:var(--text)">Delete</b> to confirm</label><input id="r-in" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Delete"></div>`,
+   `<button class="btn" style="flex:1" id="r-cancel">Cancel</button><button class="btn danger" style="flex:2;opacity:.45" id="r-ok" disabled>Delete everything</button>`);
+  const inp=$('#r-in'),ok=$('#r-ok');
+  inp.oninput=()=>{const m=inp.value.trim().toLowerCase()==='delete';ok.disabled=!m;ok.style.opacity=m?1:.45;ok.style.background=m?'var(--bad)':'';ok.style.color=m?'#fff':''};
+  $('#r-cancel').onclick=closeSheet;
+  ok.onclick=()=>{if(inp.value.trim().toLowerCase()!=='delete')return;S.items=[];S.log=[];S.cats=DEF_CATS.slice();cat='All';save();closeSheet();render();toast('All items and history deleted')};
+  setTimeout(()=>inp.focus(),280);
+}
 // ---------- Export ----------
 function download(name,text,type){const b=new Blob([text],{type});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)}
 const csvCell=v=>{v=String(v??'');return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
@@ -485,7 +497,7 @@ function exportCSV(items,name,withOrder){
   const rows=items.map(i=>[i.name,i.category,i.size,i.material,i.type,i.bin,i.sku,i.qty,i.unit,i.min,{ok:'In stock',low:'Low',out:'Out'}[status(i)]].concat(withOrder?[needQty(i)]:[]).concat([i.notes]));
   download(name,[head,...rows].map(r=>r.map(csvCell).join(',')).join('\n'),'text/csv');
 }
-function reorderText(){return 'EzInventory — Reorder List ('+new Date().toLocaleDateString()+')\n\n'+lowItems().map(i=>`• ${needQty(i)} ${i.unit} — ${i.name}${specLine(i)?' ('+specLine(i)+')':''}${i.sku?' #'+i.sku:''}  [on hand ${i.qty}]`).join('\n')}
+function reorderText(){return 'Pipefitter Inventory — Reorder List ('+new Date().toLocaleDateString()+')\n\n'+lowItems().map(i=>`• ${needQty(i)} ${i.unit} — ${i.name}${specLine(i)?' ('+specLine(i)+')':''}${i.sku?' #'+i.sku:''}  [on hand ${i.qty}]`).join('\n')}
 
 // ---------- Events ----------
 document.addEventListener('click',e=>{
@@ -501,13 +513,13 @@ document.addEventListener('click',e=>{
     S.cats=S.cats.filter(x=>x!==c);if(cat===c)cat='All';save();render();return}
   switch(t.id){
     case 'addCat':{const c=(prompt('New category name')||'').trim();if(c&&!S.cats.includes(c)){S.cats.push(c);save();render();toast(`Category “${c}” added`)}break}
-    case 'bk':download(`ezinventory-backup-${stamp()}.json`,JSON.stringify({app:'EzInventory',v:2,...S},null,0),'application/json');toast('Backup saved');break;
+    case 'bk':download(`pipefitter-inventory-backup-${stamp()}.json`,JSON.stringify({app:'Pipefitter Inventory',v:2,...S},null,0),'application/json');toast('Backup saved');break;
     case 'rs':$('#fileIn').click();break;
-    case 'csv':exportCSV(S.items,`ezinventory-${stamp()}.csv`);break;
+    case 'csv':exportCSV(S.items,`pipefitter-inventory-${stamp()}.csv`);break;
     case 'clrS':if(confirm('Remove the sample items?')){S.items=S.items.filter(i=>!i.sample);S.log=S.log.filter(l=>S.items.some(i=>i.id===l.id));save();render();toast('Sample items cleared')}break;
-    case 'rst':if(confirm('Delete ALL items and history? This cannot be undone.')){S.items=[];S.log=[];S.cats=DEF_CATS.slice();save();render();toast('Inventory reset')}break;
+    case 'rst':openReset();break;
     case 'roCopy':navigator.clipboard?.writeText(reorderText()).then(()=>toast('Reorder list copied'),()=>toast('Copy not available'));break;
-    case 'roCsv':exportCSV(lowItems(),`ezinventory-reorder-${stamp()}.csv`,true);break;
+    case 'roCsv':exportCSV(lowItems(),`pipefitter-inventory-reorder-${stamp()}.csv`,true);break;
     case 'roShare':if(navigator.share)navigator.share({title:'Reorder list',text:reorderText()}).catch(()=>{});else navigator.clipboard?.writeText(reorderText()).then(()=>toast('Sharing unavailable — list copied'));break;
   }
 });
