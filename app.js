@@ -245,6 +245,11 @@
     seedCloudIfEmpty: async () => {}
   };
 
+  function isMainAdmin() {
+    if (Cloud.user && Cloud.profile) return Cloud.profile.role === 'admin';
+    return !Cloud.configured;
+  }
+
   function canManageYard() {
     if (Cloud.user && Cloud.profile) {
       return Cloud.profile.role === 'admin' || Cloud.profile.role === 'supervisor';
@@ -912,14 +917,15 @@
             </span>
             <span class="li-chev">${ICON.chev}</span>
           </button>
-          <button type="button" class="list-item" id="rs">
-            <span class="li-icon">${ICON.ul}</span>
-            <span class="li-text">
-              <span class="li-label">Restore from backup</span>
-              <span class="li-desc">Load a previously saved JSON backup file</span>
-            </span>
-            <span class="li-chev">${ICON.chev}</span>
-          </button>
+          ${isMainAdmin() ? `
+            <button type="button" class="list-item" id="rs">
+              <span class="li-icon">${ICON.ul}</span>
+              <span class="li-text">
+                <span class="li-label">Restore from backup</span>
+                <span class="li-desc">Load a previously saved JSON backup file</span>
+              </span>
+              <span class="li-chev">${ICON.chev}</span>
+            </button>` : ''}
           <button type="button" class="list-item" id="csv">
             <span class="li-icon">${ICON.grid}</span>
             <span class="li-text">
@@ -931,7 +937,7 @@
         </div>
 
         <div class="panel">
-          <h2 class="panel-title">Device &amp; Reset</h2>
+          <h2 class="panel-title">${isMainAdmin() ? 'Device &amp; Reset' : 'Device &amp; Storage'}</h2>
           <div class="list-item">
             <span class="li-icon">${ICON.shield}</span>
             <span class="li-text">
@@ -939,7 +945,7 @@
               <span class="li-desc">${engineLabel} · ${persisted ? 'Protected' : 'Back up regularly'} · ${S.conexes.length} Conex · ${S.items.length} part${S.items.length === 1 ? '' : 's'}</span>
             </span>
           </div>
-          ${hasSamples ? `
+          ${hasSamples && isMainAdmin() ? `
             <button type="button" class="list-item" id="clrS">
               <span class="li-icon">${ICON.trash}</span>
               <span class="li-text">
@@ -948,14 +954,15 @@
               </span>
               <span class="li-chev">${ICON.chev}</span>
             </button>` : ''}
-          <button type="button" class="list-item is-danger" id="rst">
-            <span class="li-icon">${ICON.trash}</span>
-            <span class="li-text">
-              <span class="li-label">Reset everything</span>
-              <span class="li-desc">Permanently delete all items and history</span>
-            </span>
-            <span class="li-chev">${ICON.chev}</span>
-          </button>
+          ${isMainAdmin() ? `
+            <button type="button" class="list-item is-danger" id="rst">
+              <span class="li-icon">${ICON.trash}</span>
+              <span class="li-text">
+                <span class="li-label">Reset everything</span>
+                <span class="li-desc">Permanently delete all items and history</span>
+              </span>
+              <span class="li-chev">${ICON.chev}</span>
+            </button>` : ''}
         </div>
       </div>
       <div class="tools-footer">Pipefitter Inventory · Works 100% offline · Data stays on your device</div>`;
@@ -2219,6 +2226,10 @@
   }
 
   function openRestoreConfirm(parsed) {
+    if (!isMainAdmin()) {
+      toast('Main Admin access required');
+      return;
+    }
     openSheet('Restore backup', `
       <div class="callout is-warn">
         ${ICON.alert}
@@ -2250,6 +2261,10 @@
   }
 
   function openReset() {
+    if (!isMainAdmin()) {
+      toast('Main Admin access required');
+      return;
+    }
     openSheet('Reset everything', `
       <div class="callout is-danger">
         ${ICON.alert}
@@ -2449,7 +2464,10 @@
         renderTools();
         toast('Full backup saved');
         break;
-      case 'rs': $('#fileIn').click(); break;
+      case 'rs':
+        if (!isMainAdmin()) { toast('Main Admin access required'); break; }
+        $('#fileIn').click();
+        break;
       case 'csv': exportCSV(S.items, `pipefitter-inventory-${stamp()}.csv`, false); toast('CSV exported'); break;
       case 'clrS': openClearSamples(); break;
       case 'rst': openReset(); break;
