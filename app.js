@@ -384,6 +384,12 @@
     allBtn.classList.toggle('hidden', S.conexes.length <= 1);
     allBtn.classList.toggle('is-active', S.activeConex === 'all');
     allBtn.setAttribute('aria-pressed', String(S.activeConex === 'all'));
+
+    const svBtn = $('#superViewBtn');
+    if (svBtn) {
+      const isAdmin = Boolean(Cloud.user && Cloud.profile?.role === 'admin');
+      svBtn.classList.toggle('hidden', !isAdmin);
+    }
   }
 
   function readOnlyBannerHtml() {
@@ -765,6 +771,15 @@
             </span>
             <span class="li-chev">${ICON.chev}</span>
           </button>
+          ${Cloud.user && Cloud.profile?.role === 'admin' ? `
+            <button type="button" class="list-item" id="toolsSuperViewBtn">
+              <span class="li-icon">${ICON.grid}</span>
+              <span class="li-text">
+                <span class="li-label">Admin Super View</span>
+                <span class="li-desc">Browse all crews and search materials across every Conex box</span>
+              </span>
+              <span class="li-chev">${ICON.chev}</span>
+            </button>` : ''}
           ${Cloud.user && (Cloud.profile?.role === 'admin' || Cloud.profile?.role === 'supervisor') ? `
             <button type="button" class="list-item" id="adminPanelBtn">
               <span class="li-icon">${ICON.lock}</span>
@@ -2398,6 +2413,8 @@
         if (!Cloud.configured) openFirebaseSetup();
         else openAuthSheet();
         break;
+      case 'superViewBtn':
+      case 'toolsSuperViewBtn': openSuperView(); break;
       case 'adminPanelBtn': openAdminPanel(); break;
       case 'cloudConfigBtn': openFirebaseSetup(); break;
       case 'setMyTeamBtn': openSetMyTeam(); break;
@@ -2746,6 +2763,200 @@
       closeSheet();
       toast('Team transferred to new Supervisor');
     };
+  }
+
+  function openSuperView() {
+    if (!Cloud.user || Cloud.profile?.role !== 'admin') {
+      toast('Main Admin access required');
+      return;
+    }
+    const sups = Cloud.supervisors ? Cloud.supervisors() : [];
+    const supNameById = (sid) => {
+      if (!sid) return 'Main Yard';
+      const u = sups.find((x) => x.uid === sid);
+      return u ? (u.displayName || u.username) : 'Supervisor';
+    };
+
+    let svQuery = '';
+    let svSup = 'all';
+    const expandedConex = new Set();
+
+    const itemMatches = (it, q) => {
+      if (!q) return true;
+      const hay = [it.name, it.size, it.material, it.type, it.bin, it.sku, it.category, it.notes]
+        .filter(Boolean).join(' ').toLowerCase();
+      return q.split(/\s+/).every((tok) => hay.includes(tok));
+    };
+
+    openSheet('Admin Super View', `
+      <div class="sv-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="16" height="16"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <input id="sv-q" type="search" placeholder="Search material, size, bin, crew, or Conex…" autocomplete="off">
+      </div>
+      ${sups.length ? `<div class="sv-chips" id="sv-chips"></div>` : ''}
+      <div id="sv-meta" class="sv-crew-meta" style="margin-bottom:10px"></div>
+      <div id="sv-body"></div>
+    `,
+    `<button type="button" class="btn btn-primary" style="flex:1" id="sv-done">Done</button>`);
+
+    $('#sv-done').onclick = closeSheet;
+
+    const renderSuperView = () => {
+      const q = svQuery.trim().toLowerCase();
+
+      if (sups.length && $('#sv-chips')) {
+        const hasUnassigned = S.teams.some((t) => !t.supervisorId);
+        const chips = [
+          { id: 'all', label: `All (${S.teams.length})` },
+          ...sups.map((s) => ({
+            id: s.uid,
+            label: `${s.displayName || s.username} (${S.teams.filter((t) => t.supervisorId === s.uid).length})`
+          })),
+          ...(hasUnassigned ? [{ id: '__none__', label: `Unassigned (${S.teams.filter((t) => !t.supervisorId).length})` }] : [])
+        ];
+        $('#sv-chips').innerHTML = chips.map((c) => `
+          <button type="button" class="sv-chip ${svSup === c.id ? 'is-active' : ''}" data-sv-sup="${esc(c.id)}">${esc(c.label)}</button>
+        `).join('');
+        $('#sv-chips').querySelectorAll('[data-sv-sup]').forEach((b) => {
+          b.onclick = () => { svSup = b.dataset.svSup; renderSuperView(); };
+        });
+      }
+
+      const filteredTeams = S.teams.filter((t) => {
+        if (svSup === 'all') return true;
+        if (svSup === '__none__') return !t.supervisorId;
+        return t.supervisorId === svSup;
+      });
+
+      let totalMatchedCrews = 0;
+      let totalMatchedConex = 0;
+      let totalMatchedItems = 0;
+
+      const cards = filteredTeams.map((tm) => {
+        const crewName = teamDisplayName(tm);
+        const supLabel = supNameById(tm.supervisorId);
+        const boxes = conexesForTeam(tm.id);
+        const crewMatch = q && (crewName.toLowerCase().includes(q) || tm.name.toLowerCase().includes(q) || supLabel.toLowerCase().includes(q));
+
+        const boxBlocks = boxes.map((cx) => {
+          const allItems = S.items.filter((i) => i.conexId === cx.id);
+          const conexMatch = q && cx.name.toLowerCase().includes(q);
+          const matchedItems = (!q || crewMatch || conexMatch)
+            ? allItems
+            : allItems.filter((i) => itemMatches(i, q));
+
+          if (q && !crewMatch && !conexMatch && !matchedItems.length) return '';
+
+          totalMatchedConex += 1;
+          totalMatchedItems += matchedItems.length;
+          const lowCount = matchedItems.filter((i) => statusOf(i) !== 'ok').length;
+          const isOpen = Boolean(q) || expandedConex.has(cx.id);
+
+          return `
+            <div class="sv-conex-block">
+              <div class="sv-conex-row">
+                <div class="sv-conex-info">
+                  <div class="sv-conex-title">
+                    <span>${esc(cx.name)}</span>
+                    <span class="conex-pill">${matchedItems.length} ${q ? 'MATCH' : 'PART'}${matchedItems.length === 1 ? '' : (q ? 'ES' : 'S')}</span>
+                    ${lowCount ? `<span class="lock-pill">${lowCount} low/out</span>` : ''}
+                  </div>
+                  <div class="sv-conex-sub">${allItems.length} total material${allItems.length === 1 ? '' : 's'} in box</div>
+                </div>
+                <div class="sv-conex-actions">
+                  ${!q && allItems.length ? `<button type="button" class="sv-mini-btn" data-sv-toggle="${esc(cx.id)}">${isOpen ? 'Hide' : 'Materials'}</button>` : ''}
+                  <button type="button" class="sv-mini-btn primary" data-sv-open="${esc(cx.id)}">Open</button>
+                </div>
+              </div>
+              ${isOpen ? (matchedItems.length ? `
+                <div class="sv-items">
+                  ${matchedItems.map((it) => {
+                    const st = statusOf(it);
+                    const spec = [it.size, it.material, it.bin ? `Bin ${it.bin}` : ''].filter(Boolean).join(' · ');
+                    return `
+                      <button type="button" class="sv-item-row" data-sv-item="${esc(it.id)}" data-sv-item-conex="${esc(cx.id)}">
+                        <div class="sv-item-copy">
+                          <div class="sv-item-name">${esc(it.name)}</div>
+                          <div class="sv-item-spec">${esc(spec || it.category || 'Material')}</div>
+                        </div>
+                        <span class="sv-item-qty ${st === 'out' ? 'is-out' : st === 'low' ? 'is-low' : ''}">${it.qty} ${esc(it.unit || 'ea')}</span>
+                      </button>`;
+                  }).join('')}
+                </div>` : '<div class="sv-conex-sub" style="margin-top:6px">No materials in this Conex yet.</div>') : ''}
+            </div>`;
+        }).filter(Boolean);
+
+        if (q && !crewMatch && !boxBlocks.length) return '';
+        totalMatchedCrews += 1;
+
+        return `
+          <div class="sv-crew-card">
+            <div class="sv-crew-head">
+              <div>
+                <div class="sv-crew-name">${esc(crewName)}</div>
+                <div class="sv-crew-meta">${esc(supLabel)} · ${boxes.length} Conex box${boxes.length === 1 ? '' : 'es'}</div>
+              </div>
+              ${boxes.length ? `<button type="button" class="sv-mini-btn" data-sv-team="${esc(tm.id)}">View Crew</button>` : ''}
+            </div>
+            ${boxBlocks.length ? boxBlocks.join('') : '<div class="sv-conex-sub">No Conex box assigned to this crew yet.</div>'}
+          </div>`;
+      }).filter(Boolean);
+
+      $('#sv-meta').textContent = q
+        ? `${totalMatchedItems} matching material${totalMatchedItems === 1 ? '' : 's'} across ${totalMatchedConex} Conex box${totalMatchedConex === 1 ? '' : 'es'} (${totalMatchedCrews} crew${totalMatchedCrews === 1 ? '' : 's'})`
+        : `${totalMatchedCrews} crew${totalMatchedCrews === 1 ? '' : 's'} · ${totalMatchedConex} Conex box${totalMatchedConex === 1 ? '' : 'es'} · ${totalMatchedItems} total materials`;
+
+      $('#sv-body').innerHTML = cards.length
+        ? cards.join('')
+        : `<div class="empty-note" style="padding:18px 8px;text-align:center">${q ? `No crews, Conex boxes, or materials match "${esc(svQuery)}".` : 'No crews in the yard yet.'}</div>`;
+
+      $('#sv-body').querySelectorAll('[data-sv-toggle]').forEach((b) => {
+        b.onclick = () => {
+          const id = b.dataset.svToggle;
+          if (expandedConex.has(id)) expandedConex.delete(id);
+          else expandedConex.add(id);
+          renderSuperView();
+        };
+      });
+      $('#sv-body').querySelectorAll('[data-sv-open]').forEach((b) => {
+        b.onclick = () => {
+          S.activeConex = b.dataset.svOpen;
+          view = 'stock';
+          cat = 'All';
+          statusFilter = 'all';
+          save();
+          closeSheet();
+          render();
+        };
+      });
+      $('#sv-body').querySelectorAll('[data-sv-team]').forEach((b) => {
+        b.onclick = () => {
+          S.activeConex = 'team:' + b.dataset.svTeam;
+          view = 'stock';
+          cat = 'All';
+          statusFilter = 'all';
+          save();
+          closeSheet();
+          render();
+        };
+      });
+      $('#sv-body').querySelectorAll('[data-sv-item]').forEach((b) => {
+        b.onclick = () => {
+          const itemId = b.dataset.svItem;
+          const cxId = b.dataset.svItemConex;
+          if (cxId) S.activeConex = cxId;
+          view = 'stock';
+          save();
+          closeSheet();
+          render();
+          openEdit(itemId);
+        };
+      });
+    };
+
+    $('#sv-q').oninput = (e) => { svQuery = e.target.value; renderSuperView(); };
+    renderSuperView();
+    setTimeout(() => $('#sv-q')?.focus(), 200);
   }
 
   function openAdminPanel() {
