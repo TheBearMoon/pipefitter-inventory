@@ -973,7 +973,7 @@
     $('#v-tools').innerHTML = `
       <div class="tools-grid">
         <div class="panel">
-          <h2 class="panel-title">Cloud Sync &amp; Accounts (Firebase Spark)</h2>
+          <h2 class="panel-title">${isMainAdmin() ? 'Cloud Sync &amp; Accounts (Firebase Spark)' : 'Accounts'}</h2>
           <button type="button" class="list-item" id="cloudPrimaryBtn">
             <span class="li-icon">${accountIcon}</span>
             <span class="li-text">
