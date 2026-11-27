@@ -3220,6 +3220,7 @@
     const visibleUsers = isAdmin
       ? Cloud.users
       : Cloud.users.filter((u) => u.role === 'crew' && u.supervisorId === Cloud.user.uid);
+    const otherAdminCount = Cloud.users.filter((x) => x.role === 'admin' && x.uid !== Cloud.user.uid).length;
 
     const actionsHtml = isAdmin ? `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
@@ -3231,7 +3232,9 @@
       <button type="button" class="btn btn-primary" style="width:100%;margin-bottom:14px" id="adm-new-crew">+ Create Crew Account</button>
     `;
 
-    const rows = visibleUsers.map((u) => `
+    const rows = visibleUsers.map((u) => {
+      const isSelfOnlyAdmin = isAdmin && u.uid === Cloud.user.uid && u.role === 'admin' && otherAdminCount === 0;
+      return `
       <div class="panel" style="margin-bottom:10px;padding:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
           <div>
@@ -3242,7 +3245,7 @@
         </div>
         <div style="display:grid;grid-template-columns:${isAdmin ? '1fr 1fr' : '1fr'};gap:8px">
           ${isAdmin ? `
-            <select class="adm-role" data-uid="${esc(u.uid)}">
+            <select class="adm-role" data-uid="${esc(u.uid)}" ${isSelfOnlyAdmin ? 'disabled title="Promote another user to Main Admin before changing your own role"' : ''}>
               <option value="crew" ${u.role === 'crew' ? 'selected' : ''}>Crew (Own Team)</option>
               <option value="supervisor" ${u.role === 'supervisor' ? 'selected' : ''}>Supervisor (Own Group)</option>
               <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Main Admin (Full Yard)</option>
@@ -3250,7 +3253,7 @@
           ${u.role === 'crew' ? `
             <select class="adm-team" data-uid="${esc(u.uid)}">
               ${S.teams.map((t) => `<option value="${esc(t.id)}" ${u.teamId === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}
-            </select>` : '<div style="font-size:12px;color:var(--muted);align-self:center">Manages own teams</div>'}
+            </select>` : `<div style="font-size:12px;color:var(--muted);align-self:center">${isSelfOnlyAdmin ? 'Promote another Main Admin to change your role' : 'Manages own teams'}</div>`}
         </div>
         ${u.uid !== Cloud.user.uid ? `
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
@@ -3258,7 +3261,8 @@
             <button type="button" class="btn btn-danger adm-del-user" data-uid="${esc(u.uid)}" data-name="${esc(u.displayName || u.username)}" style="padding:7px 10px;font-size:12px">Delete username</button>
           </div>` : ''}
       </div>
-    `).join('') || '<div class="empty-note">No accounts in this group yet.</div>';
+    `;
+    }).join('') || '<div class="empty-note">No accounts in this group yet.</div>';
 
     openSheet(isAdmin ? 'Main Admin Panel' : 'Supervisor Panel', actionsHtml + rows,
       `<button type="button" class="btn btn-primary" style="flex:1" id="adm-done">Done</button>`);
@@ -3268,10 +3272,22 @@
     if ($('#adm-xfer-team')) $('#adm-xfer-team').onclick = () => { closeSheet(); openTransferTeamSupervisorSheet(); };
     document.querySelectorAll('.adm-role').forEach((sel) => {
       sel.onchange = async () => {
+        const targetUid = sel.dataset.uid;
+        if (targetUid === Cloud.user.uid && sel.value !== 'admin') {
+          const liveOtherAdmins = Cloud.users.filter((x) => x.role === 'admin' && x.uid !== Cloud.user.uid).length;
+          if (liveOtherAdmins === 0) {
+            sel.value = 'admin';
+            toast('Promote another user to Main Admin before demoting yourself');
+            return;
+          }
+        }
         const patch = { role: sel.value };
-        if (sel.value === 'supervisor') patch.supervisorId = sel.dataset.uid;
-        await Cloud.updateUserProfile(sel.dataset.uid, patch);
+        if (sel.value === 'supervisor') patch.supervisorId = targetUid;
+        await Cloud.updateUserProfile(targetUid, patch);
+        const localUser = Cloud.users.find((x) => x.uid === targetUid);
+        if (localUser) Object.assign(localUser, patch);
         toast('Updated account role');
+        if (targetUid !== Cloud.user.uid) openAdminPanel();
       };
     });
     document.querySelectorAll('.adm-team').forEach((sel) => {
