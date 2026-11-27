@@ -1233,7 +1233,13 @@
     };
   }
 
-  function openPackageDetail(pkgId) {
+  function canEditPackageNote(n) {
+    if (!n || (n.type && n.type !== 'note')) return false;
+    if (Cloud.user) return Boolean(n.authorUid && n.authorUid === Cloud.user.uid);
+    return !Cloud.configured && !n.authorUid;
+  }
+
+  function openPackageDetail(pkgId, editingNoteId = null) {
     const pkg = S.packages.find((p) => p.id === pkgId);
     if (!pkg) return;
     if (!Array.isArray(pkg.checklist)) pkg.checklist = [];
@@ -1259,14 +1265,32 @@
       : `<div class="empty-note" style="padding:10px 0">No materials added yet. Add the materials needed to sell off this package below.</div>`;
 
     const historyHtml = pkg.notes.length
-      ? pkg.notes.map((n) => `
-          <div class="pkg-hist-item is-${esc(n.type || 'note')}">
-            <div class="pkg-hist-text">${esc(n.text)}</div>
-            <div class="pkg-hist-meta">
-              <span>${esc(n.author || 'User')}</span>
-              <span>${esc(fmtDateTime(n.ts))}</span>
-            </div>
-          </div>`).join('')
+      ? pkg.notes.map((n) => {
+          const editable = canEditPackageNote(n);
+          if (editingNoteId && n.id === editingNoteId && editable) {
+            return `
+              <div class="pkg-hist-item is-note is-editing">
+                <div class="pkg-note-edit-form">
+                  <input id="pkg-note-edit-in" type="text" value="${esc(n.text)}" aria-label="Edit note">
+                  <div class="pkg-note-edit-actions">
+                    <button type="button" class="btn pkg-note-edit-btn" id="pkg-note-edit-cancel">Cancel</button>
+                    <button type="button" class="btn btn-primary pkg-note-edit-btn" id="pkg-note-edit-save">Save</button>
+                  </div>
+                </div>
+              </div>`;
+          }
+          return `
+            <div class="pkg-hist-item is-${esc(n.type || 'note')}">
+              <div class="pkg-hist-text">${esc(n.text)}</div>
+              <div class="pkg-hist-meta">
+                <span>${esc(n.author || 'User')}</span>
+                <span class="pkg-hist-right">
+                  <span>${esc(fmtDateTime(n.ts))}${n.editedAt ? ' · Edited' : ''}</span>
+                  ${editable ? `<button type="button" class="pkg-note-edit-link" data-edit-note="${esc(n.id)}" aria-label="Edit your note">Edit</button>` : ''}
+                </span>
+              </div>
+            </div>`;
+        }).join('')
       : `<div class="empty-note" style="padding:8px 0">No notes or history yet.</div>`;
 
     openSheet(pkg.name, `
@@ -1443,6 +1467,36 @@
     };
     $('#pkg-note-post').onclick = postNote;
     $('#pkg-note-input').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); postNote(); } };
+
+    // Edit own posted note
+    document.querySelectorAll('[data-edit-note]').forEach((btn) => {
+      btn.onclick = () => openPackageDetail(pkg.id, btn.dataset.editNote);
+    });
+    if ($('#pkg-note-edit-in')) {
+      const editIn = $('#pkg-note-edit-in');
+      editIn.focus();
+      try { editIn.setSelectionRange(editIn.value.length, editIn.value.length); } catch (_) {}
+      const saveNoteEdit = () => {
+        const entry = pkg.notes.find((x) => x.id === editingNoteId);
+        if (!entry || !canEditPackageNote(entry)) return;
+        const nextText = editIn.value.trim();
+        if (!nextText) { editIn.focus(); return; }
+        entry.text = nextText;
+        entry.editedAt = Date.now();
+        pkg.updatedAt = entry.editedAt;
+        syncPackageToCloud(pkg);
+        save();
+        render();
+        toast('Note updated');
+        openPackageDetail(pkg.id);
+      };
+      $('#pkg-note-edit-save').onclick = saveNoteEdit;
+      $('#pkg-note-edit-cancel').onclick = () => openPackageDetail(pkg.id);
+      editIn.onkeydown = (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); saveNoteEdit(); }
+        if (e.key === 'Escape') { e.preventDefault(); openPackageDetail(pkg.id); }
+      };
+    }
   }
 
   function renderActivity() {
