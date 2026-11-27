@@ -66,7 +66,7 @@
   ];
 
   const SPEC = {
-    'Gaskets': ['Pipe size', 'e.g. 4"', 'Material', 'e.g. Green Compressed Fiber', 'Type / Class', 'e.g. 150# Full Face'],
+    'Gaskets': ['Flange size', 'e.g. 4"', 'Material', 'e.g. Green Compressed Fiber', 'Type / Class', 'e.g. 150# Full Face'],
     'Bolts': ['Diameter × Length', 'e.g. 3/4" × 4-1/2"', 'Grade / Coating', 'e.g. ASTM A193 B7', 'Nut / Thread', 'e.g. 2H Heavy Hex'],
     'U-Bolts': ['Pipe size', 'e.g. 2" Pipe', 'Finish', 'e.g. Hot-Dip Galv', 'Rod / Thread', 'e.g. 3/8" Rod'],
     'J-Bolts': ['Diameter × Length', 'e.g. 1/2" × 12"', 'Finish', 'e.g. Hot-Dip Galv', 'Hook / Thread', 'e.g. 3" Thread'],
@@ -1311,6 +1311,14 @@
     return w && w.done ? 'completed' : 'untouched';
   }
 
+  function formatChecklistSpec(it) {
+    if (!it) return '';
+    if (it.category === 'Gaskets') {
+      return [it.size ? `Flange ${it.size}` : '', it.type, it.material].filter(Boolean).join(' · ');
+    }
+    return [it.size, it.material, it.type].filter(Boolean).join(' · ');
+  }
+
   function openPackageDetail(pkgId, editingNoteId = null) {
     const pkg = S.packages.find((p) => p.id === pkgId);
     if (!pkg) return;
@@ -1331,18 +1339,24 @@
     const stockChoices = S.items.slice().sort((a, b) => a.name.localeCompare(b.name));
 
     const checklistHtml = pkg.checklist.length
-      ? pkg.checklist.map((c) => `
+      ? pkg.checklist.map((c) => {
+          const linked = c.itemId ? S.items.find((x) => x.id === c.itemId) : null;
+          const displaySpec = linked
+            ? formatChecklistSpec(linked)
+            : (c.spec || '');
+          return `
           <div class="pkg-check-row ${c.done ? 'is-done' : ''}">
             <button type="button" class="pkg-check-toggle" data-pkg-chk="${esc(c.id)}" aria-pressed="${Boolean(c.done)}" aria-label="Toggle ${esc(c.name)}" ${isSoldLocked ? 'disabled' : ''}>
               <span class="pkg-checkbox">${c.done ? ICON.check : ''}</span>
               <span class="pkg-check-copy">
                 <span class="pkg-check-name">${esc(c.name)}</span>
-                ${c.spec ? `<span class="pkg-check-spec">${esc(c.spec)}</span>` : ''}
+                ${displaySpec ? `<span class="pkg-check-spec">${esc(displaySpec)}</span>` : ''}
               </span>
             </button>
             <span class="pkg-check-qty">${c.qtyNeeded} ${esc(c.unit || 'ea')}</span>
             ${isSoldLocked ? '' : `<button type="button" class="pkg-check-del" data-pkg-chk-del="${esc(c.id)}" aria-label="Remove ${esc(c.name)}">×</button>`}
-          </div>`).join('')
+          </div>`;
+        }).join('')
       : `<div class="empty-note" style="padding:10px 0">No materials added yet. Add the materials needed to sell off this package below.</div>`;
 
     const boltUpsHtml = pkg.boltUps.length
@@ -1624,7 +1638,7 @@
       pkg.checklist.push({
         id: pkgUid('c'),
         name: rawName,
-        spec: picked ? [picked.material, picked.type].filter(Boolean).join(' · ') : '',
+        spec: picked ? formatChecklistSpec(picked) : '',
         qtyNeeded,
         unit: picked?.unit || 'ea',
         itemId: picked?.id || '',
