@@ -1330,7 +1330,7 @@
     ].filter(Boolean).join(' · ');
   }
 
-  function openPackageDetail(pkgId, editingNoteId = null) {
+  function openPackageDetail(pkgId, editingNoteId = null, editingMatId = null) {
     const pkg = S.packages.find((p) => p.id === pkgId);
     if (!pkg) return;
     if (!Array.isArray(pkg.checklist)) pkg.checklist = [];
@@ -1355,8 +1355,24 @@
           const displaySpec = linked
             ? formatChecklistSpec(linked, c.name)
             : (c.spec || '');
+          if (editingMatId && c.id === editingMatId && !isSoldLocked) {
+            return `
+            <div class="pkg-check-row pkg-check-row-edit" data-pkg-mat-row="${esc(c.id)}">
+              <div class="pkg-mat-edit-form">
+                <input id="pkg-mat-edit-header" type="text" value="${esc(c.header || '')}" placeholder="Tag header (optional, e.g. North Header)" aria-label="Edit header tag">
+                <div class="pkg-add-mat-row">
+                  <input id="pkg-mat-edit-name" type="text" value="${esc(c.name || '')}" placeholder="Material &amp; size" aria-label="Edit material name">
+                  <input id="pkg-mat-edit-qty" type="number" min="1" step="1" value="${c.qtyNeeded || 1}" inputmode="numeric" aria-label="Edit quantity">
+                </div>
+                <div class="pkg-note-edit-actions">
+                  <button type="button" class="btn btn-outline" id="pkg-mat-edit-cancel">Cancel</button>
+                  <button type="button" class="btn btn-primary" id="pkg-mat-edit-save" data-pkg-mat-save="${esc(c.id)}">Save</button>
+                </div>
+              </div>
+            </div>`;
+          }
           return `
-          <div class="pkg-check-row ${c.done ? 'is-done' : ''}">
+          <div class="pkg-check-row ${c.done ? 'is-done' : ''}" data-pkg-mat-row="${esc(c.id)}">
             <button type="button" class="pkg-check-toggle" data-pkg-chk="${esc(c.id)}" aria-pressed="${Boolean(c.done)}" aria-label="Toggle ${esc(c.name)}" ${isSoldLocked ? 'disabled' : ''}>
               <span class="pkg-checkbox">${c.done ? ICON.check : ''}</span>
               <span class="pkg-check-copy">
@@ -1366,6 +1382,7 @@
               </span>
             </button>
             <span class="pkg-check-qty">${c.qtyNeeded} ${esc(c.unit || 'ea')}</span>
+            ${isSoldLocked ? '' : `<button type="button" class="pkg-check-edit" data-pkg-chk-edit="${esc(c.id)}" aria-label="Edit ${esc(c.name)}">Edit</button>`}
             ${isSoldLocked ? '' : `<button type="button" class="pkg-check-del" data-pkg-chk-del="${esc(c.id)}" aria-label="Remove ${esc(c.name)}">×</button>`}
           </div>`;
         }).join('')
@@ -1462,7 +1479,7 @@
       <div class="pkg-section">
         <div class="pkg-section-head">
           <span>Materials Checklist</span>
-          <span class="pkg-section-count">${doneCnt}/${pkg.checklist.length} ready</span>
+          <span class="pkg-section-count" id="pkg-mat-count">${doneCnt}/${pkg.checklist.length} ready</span>
         </div>
         <div class="pkg-checklist">${checklistHtml}</div>
         ${isSoldLocked ? '' : `
@@ -1560,9 +1577,11 @@
       };
     });
 
-    // Toggle checklist item
+    // Toggle checklist item (in-place update so scroll position never jumps or double-triggers)
     document.querySelectorAll('[data-pkg-chk]').forEach((btn) => {
-      btn.onclick = () => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        if (isSoldLocked) return;
         const cid = btn.dataset.pkgChk;
         const entry = pkg.checklist.find((c) => c.id === cid);
         if (!entry) return;
@@ -1600,13 +1619,68 @@
           }
         }
 
+        // Update row and counter in place
+        const row = btn.closest('[data-pkg-mat-row]');
+        if (row) {
+          row.classList.toggle('is-done', nextDone);
+          btn.setAttribute('aria-pressed', String(nextDone));
+          const box = btn.querySelector('.pkg-checkbox');
+          if (box) box.innerHTML = nextDone ? ICON.check : '';
+        }
+        const cntEl = $('#pkg-mat-count');
+        if (cntEl) {
+          const readyCnt = pkg.checklist.filter((x) => x.done).length;
+          cntEl.textContent = `${readyCnt}/${pkg.checklist.length} ready`;
+        }
+
         pkg.updatedAt = Date.now();
         syncPackageToCloud(pkg);
         save();
         render();
-        openPackageDetail(pkg.id);
       };
     });
+
+    // Edit checklist item inline
+    document.querySelectorAll('[data-pkg-chk-edit]').forEach((btn) => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        if (isSoldLocked) return;
+        const sc = $('#shBody')?.scrollTop || 0;
+        openPackageDetail(pkg.id, null, btn.dataset.pkgChkEdit);
+        if ($('#shBody')) $('#shBody').scrollTop = sc;
+        $('#pkg-mat-edit-name')?.focus();
+      };
+    });
+    if ($('#pkg-mat-edit-cancel')) {
+      $('#pkg-mat-edit-cancel').onclick = () => {
+        const sc = $('#shBody')?.scrollTop || 0;
+        openPackageDetail(pkg.id);
+        if ($('#shBody')) $('#shBody').scrollTop = sc;
+      };
+    }
+    if ($('#pkg-mat-edit-save')) {
+      $('#pkg-mat-edit-save').onclick = () => {
+        const cid = $('#pkg-mat-edit-save').dataset.pkgMatSave;
+        const entry = pkg.checklist.find((c) => c.id === cid);
+        if (!entry) return;
+        const newName = ($('#pkg-mat-edit-name')?.value || '').trim();
+        if (!newName) { $('#pkg-mat-edit-name')?.focus(); return; }
+        const newHeader = ($('#pkg-mat-edit-header')?.value || '').trim();
+        const newQty = Math.max(1, parseInt($('#pkg-mat-edit-qty')?.value, 10) || 1);
+        entry.name = newName;
+        entry.header = newHeader;
+        entry.qtyNeeded = newQty;
+        const linked = entry.itemId ? S.items.find((x) => x.id === entry.itemId) : null;
+        if (linked) entry.spec = formatChecklistSpec(linked, newName);
+        pkg.updatedAt = Date.now();
+        syncPackageToCloud(pkg);
+        save();
+        render();
+        const sc = $('#shBody')?.scrollTop || 0;
+        openPackageDetail(pkg.id);
+        if ($('#shBody')) $('#shBody').scrollTop = sc;
+      };
+    }
 
     // Remove checklist item
     document.querySelectorAll('[data-pkg-chk-del]').forEach((btn) => {
