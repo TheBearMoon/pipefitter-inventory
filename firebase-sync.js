@@ -225,7 +225,7 @@
         teamsQ.onSnapshot((snap) => {
           const teams = [];
           snap.forEach((d) => teams.push({ id: d.id, ...d.data() }));
-          if (teams.length || !admin) this.onRemoteData({ teams });
+          this.onRemoteData({ teams, hasRemoteTeams: true });
         })
       );
 
@@ -289,6 +289,11 @@
       await this.db.collection('teams').doc(doc.id).set(doc, { merge: true });
     },
 
+    async deleteTeam(teamId) {
+      if (!this.isAdmin() && !this.isSupervisor()) throw new Error('Only Supervisors and Main Admin can delete a team');
+      await this.db.collection('teams').doc(teamId).delete();
+    },
+
     // Main Admin only: transfer a Team (and all its Conex boxes + items) to a different Supervisor
     async transferTeamToSupervisor(teamId, newSupervisorId, conexes, items) {
       if (!this.isAdmin()) throw new Error('Only Main Admin can transfer teams between supervisors');
@@ -310,11 +315,12 @@
 
     async pushConex(conex) {
       if (!this.isAdmin() && !this.isSupervisor()) return;
-      await this.db.collection('conexes').doc(conex.id).set(conex, { merge: true });
+      const doc = { ...conex, supervisorId: this.isSupervisor() ? this.user.uid : (conex.supervisorId || '') };
+      await this.db.collection('conexes').doc(doc.id).set(doc, { merge: true });
     },
 
     async deleteConex(conexId) {
-      if (!this.isAdmin() && !this.isSupervisor()) return;
+      if (!this.isAdmin() && !this.isSupervisor()) throw new Error('Only Supervisors and Main Admin can delete a Conex box');
       await this.db.collection('conexes').doc(conexId).delete();
     },
 

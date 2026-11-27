@@ -222,7 +222,7 @@
   }
 
   // ---------- Helpers ----------
-  const teamById = (id) => S.teams.find((t) => t.id === id) || S.teams[0];
+  const teamById = (id) => S.teams.find((t) => t.id === id) || S.teams[0] || { id: '', name: 'Unassigned' };
   function teamDisplayName(teamOrId) {
     const t = typeof teamOrId === 'string' ? teamById(teamOrId) : teamOrId;
     if (!t) return '';
@@ -232,17 +232,25 @@
     if (crewNames.length) return crewNames.join(', ');
     return t.name;
   }
-  const conexById = (id) => S.conexes.find((c) => c.id === id) || S.conexes[0];
+  const conexById = (id) => S.conexes.find((c) => c.id === id) || S.conexes[0] || null;
   const conexesForTeam = (tid) => S.conexes.filter((c) => c.teamId === tid);
   const myTeamObj = () => teamById(S.myTeamId);
 
   const Cloud = window.PipefitterCloud || {
     configured: false, ready: false, online: true, user: null, profile: null, users: [],
     init: async () => false, saveConfig: () => {}, getSavedConfig: () => null,
-    pushMeta: async () => {}, pushConex: async () => {}, deleteConex: async () => {},
+    pushMeta: async () => {}, pushTeam: async () => {}, deleteTeam: async () => {},
+    pushConex: async () => {}, deleteConex: async () => {},
     pushItem: async () => {}, deleteItem: async () => {}, pushLog: async () => {},
     seedCloudIfEmpty: async () => {}
   };
+
+  function canManageYard() {
+    if (Cloud.user && Cloud.profile) {
+      return Cloud.profile.role === 'admin' || Cloud.profile.role === 'supervisor';
+    }
+    return !Cloud.configured;
+  }
 
   function canEditConex(conexId) {
     const cx = conexById(conexId);
@@ -778,8 +786,35 @@
         </div>
 
         <div class="panel">
-          <h2 class="panel-title">Conex Boxes &amp; Teams</h2>
-          ${S.conexes.map((c) => {
+          <h2 class="panel-title">Teams</h2>
+          ${S.teams.length ? S.teams.map((tm) => {
+            const boxes = conexesForTeam(tm.id);
+            const boxIds = new Set(boxes.map((b) => b.id));
+            const cnt = S.items.filter((i) => boxIds.has(i.conexId)).length;
+            return `
+              <button type="button" class="list-item" data-editteam="${esc(tm.id)}">
+                <span class="li-icon">${ICON.shield}</span>
+                <span class="li-text">
+                  <span class="li-label">${esc(teamDisplayName(tm))} <span class="conex-pill" style="margin-left:6px">${boxes.length} CONEX</span></span>
+                  <span class="li-desc">${cnt} part${cnt === 1 ? '' : 's'}${canManageYard() ? ' · Tap to edit or delete team' : ' · View only'}</span>
+                </span>
+                <span class="li-chev">${ICON.chev}</span>
+              </button>`;
+          }).join('') : '<div class="empty-note" style="padding:12px 16px">No teams yet.</div>'}
+          ${canManageYard() ? `
+            <button type="button" class="list-item" id="addTeamBtn">
+              <span class="li-icon">${ICON.plus}</span>
+              <span class="li-text">
+                <span class="li-label">Add team</span>
+                <span class="li-desc">Create a new crew (teams can hold 1 or multiple Conex boxes)</span>
+              </span>
+              <span class="li-chev">${ICON.chev}</span>
+            </button>` : ''}
+        </div>
+
+        <div class="panel">
+          <h2 class="panel-title">Conex Boxes</h2>
+          ${S.conexes.length ? S.conexes.map((c) => {
             const tm = teamById(c.teamId);
             const cnt = S.items.filter((i) => i.conexId === c.id).length;
             const low = S.items.filter((i) => i.conexId === c.id && statusOf(i) !== 'ok').length;
@@ -787,28 +822,21 @@
               <button type="button" class="list-item" data-editconex="${esc(c.id)}">
                 <span class="li-icon">${ICON.conex}</span>
                 <span class="li-text">
-                  <span class="li-label">${esc(c.name)} <span class="conex-pill" style="margin-left:6px">${esc(tm.name)}</span></span>
-                  <span class="li-desc">${cnt} part${cnt === 1 ? '' : 's'}${low ? ` · ${low} low/out` : ''} · Tap to edit or transfer Conex</span>
+                  <span class="li-label">${esc(c.name)} <span class="conex-pill" style="margin-left:6px">${esc(teamDisplayName(tm))}</span></span>
+                  <span class="li-desc">${cnt} part${cnt === 1 ? '' : 's'}${low ? ` · ${low} low/out` : ''}${canManageYard() ? ' · Tap to edit, transfer, or delete' : ' · View only'}</span>
                 </span>
                 <span class="li-chev">${ICON.chev}</span>
               </button>`;
-          }).join('')}
-          <button type="button" class="list-item" id="addConexBtn">
-            <span class="li-icon">${ICON.plus}</span>
-            <span class="li-text">
-              <span class="li-label">Add Conex box</span>
-              <span class="li-desc">Assign a new Conex to an existing or new team</span>
-            </span>
-            <span class="li-chev">${ICON.chev}</span>
-          </button>
-          <button type="button" class="list-item" id="addTeamBtn">
-            <span class="li-icon">${ICON.plus}</span>
-            <span class="li-text">
-              <span class="li-label">Add team</span>
-              <span class="li-desc">Create a new crew (teams can hold 1 or multiple Conex boxes)</span>
-            </span>
-            <span class="li-chev">${ICON.chev}</span>
-          </button>
+          }).join('') : '<div class="empty-note" style="padding:12px 16px">No Conex boxes yet.</div>'}
+          ${canManageYard() ? `
+            <button type="button" class="list-item" id="addConexBtn">
+              <span class="li-icon">${ICON.plus}</span>
+              <span class="li-text">
+                <span class="li-label">Add Conex box</span>
+                <span class="li-desc">Assign a new Conex to an existing or new team</span>
+              </span>
+              <span class="li-chev">${ICON.chev}</span>
+            </button>` : ''}
         </div>
 
         <div class="panel">
@@ -1334,6 +1362,8 @@
       if (!toTm || toTm.id === fromTm.id) return;
 
       cx.teamId = toTm.id;
+      if (toTm.supervisorId !== undefined) cx.supervisorId = toTm.supervisorId;
+      if (Cloud.ready && Cloud.user) Cloud.pushConex(cx).catch(() => {});
       const partCount = S.items.filter((i) => i.conexId === cx.id).length;
       S.log.unshift({
         t: Date.now(),
@@ -1355,6 +1385,10 @@
 
   // Add / Edit Conex Box Sheet
   function openConexEditor(conexId) {
+    if (!canManageYard()) {
+      toast('Only Supervisors and Main Admin can manage Conex boxes');
+      return;
+    }
     const existing = conexId ? conexById(conexId) : null;
     const nextNum = S.conexes.length + 1;
     const partCount = existing ? S.items.filter((i) => i.conexId === existing.id).length : 0;
@@ -1367,30 +1401,41 @@
       </div>
       <div class="field">
         <label for="cx-team">Assigned team</label>
-        <select id="cx-team">${S.teams.map((t) => `<option value="${esc(t.id)}" ${(existing ? existing.teamId : S.myTeamId) === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
+        <select id="cx-team">${S.teams.map((t) => `<option value="${esc(t.id)}" ${(existing ? existing.teamId : S.myTeamId) === t.id ? 'selected' : ''}>${esc(teamDisplayName(t))}</option>`).join('')}</select>
       </div>
       ${existing && S.teams.length > 1 ? `
         <button type="button" class="btn btn-outline" style="width:100%;margin-bottom:var(--space-2)" id="cx-xfer">${ICON.xfer}Transfer ${esc(existing.name)} to another team</button>` : ''}
-      ${existing && S.conexes.length > 1 ? `
-        <button type="button" class="btn btn-danger" style="width:100%" id="cx-del">${ICON.trash}Remove Conex box</button>` : ''}
+      ${existing ? `
+        <button type="button" class="btn btn-danger" style="width:100%" id="cx-del">${ICON.trash}Delete Conex box</button>` : ''}
     `,
     `<button type="button" class="btn" style="flex:1" id="cx-cancel">Cancel</button>
      <button type="button" class="btn btn-primary" style="flex:2" id="cx-save">${existing ? 'Save Conex' : 'Add Conex'}</button>`);
 
     $('#cx-name').oninput = () => $('#fg-cname').classList.remove('has-error');
     $('#cx-cancel').onclick = closeSheet;
-    $('#cx-save').onclick = () => {
+    $('#cx-save').onclick = async () => {
       const name = $('#cx-name').value.trim();
       const teamId = $('#cx-team').value;
       if (!name) { $('#fg-cname').classList.add('has-error'); $('#cx-name').focus(); return; }
+      const assignedTeam = teamById(teamId);
+      const supId = Cloud.profile?.role === 'supervisor'
+        ? Cloud.user.uid
+        : (assignedTeam?.supervisorId || existing?.supervisorId || '');
       if (existing) {
         existing.name = name;
         existing.teamId = teamId;
+        existing.supervisorId = supId;
+        if (Cloud.ready && Cloud.user) {
+          try { await Cloud.pushConex(existing); } catch (err) { toast(err?.message || 'Could not sync Conex'); }
+        }
         toast(`Saved ${name}`);
       } else {
-        const nc = { id: 'conex-' + uid(), name, teamId };
+        const nc = { id: 'conex-' + uid(), name, teamId, supervisorId: supId };
         S.conexes.push(nc);
         S.activeConex = nc.id;
+        if (Cloud.ready && Cloud.user) {
+          try { await Cloud.pushConex(nc); } catch (err) { toast(err?.message || 'Could not sync Conex'); }
+        }
         toast(`Added ${name}`);
       }
       save();
@@ -1400,24 +1445,132 @@
     if ($('#cx-xfer')) $('#cx-xfer').onclick = () => openWholeConexTransfer(existing.id);
     if ($('#cx-del')) {
       $('#cx-del').onclick = () => {
-        if (Cloud.user && Cloud.profile && Cloud.profile.role === 'crew') {
+        if (!canManageYard()) {
           toast('Only Supervisors and Main Admin can delete a Conex box');
           return;
         }
-        if (partCount) { toast(`Move or delete ${partCount} part${partCount > 1 ? 's' : ''} in ${existing.name} first`); return; }
-        S.conexes = S.conexes.filter((c) => c.id !== existing.id);
-        if (S.activeConex === existing.id) S.activeConex = S.conexes[0]?.id || 'all';
-        if (Cloud.ready && Cloud.user) Cloud.deleteConex(existing.id).catch(() => {});
-        save();
-        closeSheet();
-        render();
-        toast(`Removed ${existing.name}`);
+        openSheet(`Delete ${existing.name}?`, `
+          <div class="info-callout">
+            <span>${partCount
+              ? `<strong>${esc(existing.name)}</strong> contains <strong>${partCount} part${partCount === 1 ? '' : 's'}</strong>. Deleting this Conex box will permanently remove the box and its parts from the yard.`
+              : `Permanently delete <strong>${esc(existing.name)}</strong> from the yard? This cannot be undone.`}</span>
+          </div>
+        `,
+        `<button type="button" class="btn" style="flex:1" id="dcx-cancel">Cancel</button>
+         <button type="button" class="btn btn-danger" style="flex:2" id="dcx-ok">Delete Conex box</button>`);
+        $('#dcx-cancel').onclick = () => openConexEditor(existing.id);
+        $('#dcx-ok').onclick = async () => {
+          const toDeleteItems = S.items.filter((i) => i.conexId === existing.id);
+          try {
+            if (Cloud.ready && Cloud.user) {
+              for (const it of toDeleteItems) {
+                await Cloud.deleteItem(it.id).catch(() => {});
+              }
+              await Cloud.deleteConex(existing.id);
+            }
+            S.items = S.items.filter((i) => i.conexId !== existing.id);
+            S.conexes = S.conexes.filter((c) => c.id !== existing.id);
+            if (S.activeConex === existing.id) S.activeConex = S.conexes[0]?.id || 'all';
+            save();
+            closeSheet();
+            render();
+            toast(`Deleted ${existing.name}`);
+          } catch (err) {
+            toast(err?.message || 'Could not delete Conex box');
+          }
+        };
       };
     }
   }
 
+  // Edit / Delete Team Sheet
+  function openTeamEditor(teamId) {
+    if (!canManageYard()) {
+      toast('Only Supervisors and Main Admin can manage teams');
+      return;
+    }
+    const existing = S.teams.find((t) => t.id === teamId);
+    if (!existing) return;
+    const boxes = conexesForTeam(existing.id);
+    const boxIds = new Set(boxes.map((b) => b.id));
+    const partCount = S.items.filter((i) => boxIds.has(i.conexId)).length;
+
+    openSheet(`Manage ${teamDisplayName(existing)}`, `
+      <div class="field" id="fg-etname">
+        <label for="et-name">Team / Crew name</label>
+        <input id="et-name" value="${esc(existing.name)}" placeholder="e.g. Turnaround, Fab Shop" autocomplete="off">
+        <div class="field-error">Enter a team name.</div>
+      </div>
+      <div class="info-callout" style="margin-bottom:var(--space-3)">
+        <span>Assigned <strong>${boxes.length} Conex box${boxes.length === 1 ? '' : 'es'}</strong> · <strong>${partCount} part${partCount === 1 ? '' : 's'}</strong>.</span>
+      </div>
+      <button type="button" class="btn btn-danger" style="width:100%" id="tm-del">${ICON.trash}Delete team</button>
+    `,
+    `<button type="button" class="btn" style="flex:1" id="et-cancel">Cancel</button>
+     <button type="button" class="btn btn-primary" style="flex:2" id="et-save">Save team</button>`);
+
+    $('#et-name').oninput = () => $('#fg-etname').classList.remove('has-error');
+    $('#et-cancel').onclick = closeSheet;
+    $('#et-save').onclick = async () => {
+      const name = $('#et-name').value.trim();
+      if (!name) { $('#fg-etname').classList.add('has-error'); $('#et-name').focus(); return; }
+      existing.name = name;
+      if (Cloud.ready && Cloud.user) {
+        try { await Cloud.pushTeam(existing); } catch (err) { toast(err?.message || 'Could not sync team'); }
+      }
+      save();
+      closeSheet();
+      render();
+      toast(`Saved ${name}`);
+    };
+    $('#tm-del').onclick = () => {
+      const label = teamDisplayName(existing);
+      openSheet(`Delete ${label}?`, `
+        <div class="info-callout">
+          <span>${boxes.length
+            ? `<strong>${esc(label)}</strong> currently holds <strong>${boxes.length} Conex box${boxes.length === 1 ? '' : 'es'}</strong> and <strong>${partCount} part${partCount === 1 ? '' : 's'}</strong>. Deleting this team will also permanently delete its Conex boxes and parts.`
+            : `Permanently delete <strong>${esc(label)}</strong>? This cannot be undone.`}</span>
+        </div>
+      `,
+      `<button type="button" class="btn" style="flex:1" id="dtm-cancel">Cancel</button>
+       <button type="button" class="btn btn-danger" style="flex:2" id="dtm-ok">Delete team</button>`);
+      $('#dtm-cancel').onclick = () => openTeamEditor(existing.id);
+      $('#dtm-ok').onclick = async () => {
+        const toDeleteItems = S.items.filter((i) => boxIds.has(i.conexId));
+        try {
+          if (Cloud.ready && Cloud.user) {
+            for (const it of toDeleteItems) {
+              await Cloud.deleteItem(it.id).catch(() => {});
+            }
+            for (const cx of boxes) {
+              await Cloud.deleteConex(cx.id).catch(() => {});
+            }
+            await Cloud.deleteTeam(existing.id);
+          }
+          S.items = S.items.filter((i) => !boxIds.has(i.conexId));
+          S.conexes = S.conexes.filter((c) => c.teamId !== existing.id);
+          S.teams = S.teams.filter((t) => t.id !== existing.id);
+          if (S.myTeamId === existing.id) S.myTeamId = S.teams[0]?.id || '';
+          if (boxIds.has(S.activeConex) || S.activeConex === 'team:' + existing.id) {
+            S.activeConex = S.conexes[0]?.id || 'all';
+          }
+          save();
+          closeSheet();
+          render();
+          toast(`Deleted ${label}`);
+        } catch (err) {
+          toast(err?.message || 'Could not delete team');
+        }
+      };
+    };
+  }
+
   // Add Team Sheet
   function openAddTeam() {
+    if (!canManageYard()) {
+      toast('Only Supervisors and Main Admin can add teams');
+      return;
+    }
     const nextLetter = String.fromCharCode(65 + S.teams.length);
     openSheet('Add team', `
       <div class="field" id="fg-tname">
@@ -1435,14 +1588,22 @@
 
     $('#t-name').oninput = () => $('#fg-tname').classList.remove('has-error');
     $('#t-cancel').onclick = closeSheet;
-    $('#t-save').onclick = () => {
+    $('#t-save').onclick = async () => {
       const name = $('#t-name').value.trim();
       const conexName = $('#t-conex').value.trim();
       if (!name) { $('#fg-tname').classList.add('has-error'); $('#t-name').focus(); return; }
-      const nt = { id: 'team-' + uid(), name };
+      const supId = Cloud.profile?.role === 'supervisor' ? Cloud.user.uid : '';
+      const nt = { id: 'team-' + uid(), name, supervisorId: supId };
       S.teams.push(nt);
+      if (Cloud.ready && Cloud.user) {
+        try { await Cloud.pushTeam(nt); } catch (err) { toast(err?.message || 'Could not sync team'); }
+      }
       if (conexName) {
-        S.conexes.push({ id: 'conex-' + uid(), name: conexName, teamId: nt.id });
+        const nc = { id: 'conex-' + uid(), name: conexName, teamId: nt.id, supervisorId: supId };
+        S.conexes.push(nc);
+        if (Cloud.ready && Cloud.user) {
+          try { await Cloud.pushConex(nc); } catch (err) { toast(err?.message || 'Could not sync Conex'); }
+        }
       }
       save();
       closeSheet();
@@ -2204,6 +2365,7 @@
     }
     if (t.dataset.edit) { openEdit(t.dataset.edit); return; }
     if (t.dataset.editconex) { openConexEditor(t.dataset.editconex); return; }
+    if (t.dataset.editteam) { openTeamEditor(t.dataset.editteam); return; }
     if (t.dataset.editlib) { openLibPhotoEditor(t.dataset.editlib); return; }
     if (t.dataset.delcat) {
       const c = t.dataset.delcat;
@@ -2693,7 +2855,7 @@
         if (patch.meta && Array.isArray(patch.meta.photoLibrary) && patch.meta.photoLibrary.length) {
           S.photoLib = patch.meta.photoLibrary;
         }
-        if (Array.isArray(patch.teams) && patch.teams.length) S.teams = patch.teams;
+        if (patch.hasRemoteTeams && Array.isArray(patch.teams)) S.teams = patch.teams;
         if (patch.hasRemoteConexes && Array.isArray(patch.conexes)) S.conexes = patch.conexes;
         if (patch.hasRemoteItems && Array.isArray(patch.items)) S.items = patch.items;
         if (Array.isArray(patch.logs)) S.log = patch.logs;
