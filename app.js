@@ -1491,7 +1491,40 @@
         const cid = btn.dataset.pkgChk;
         const entry = pkg.checklist.find((c) => c.id === cid);
         if (!entry) return;
-        entry.done = !entry.done;
+        const nextDone = !entry.done;
+        entry.done = nextDone;
+
+        // Deduct from stock when checked off; restore exact deducted amount if unchecked
+        const findLinkedStock = () => {
+          const targetId = entry.deductedItemId || entry.itemId;
+          if (targetId) {
+            const byId = S.items.find((x) => x.id === targetId);
+            if (byId) return byId;
+          }
+          const nm = (entry.name || '').trim().toLowerCase();
+          if (!nm) return null;
+          return S.items.find((x) => {
+            const full = (x.size ? `${x.name} (${x.size})` : x.name).trim().toLowerCase();
+            return full === nm || (x.name || '').trim().toLowerCase() === nm;
+          }) || null;
+        };
+        const stockItem = findLinkedStock();
+        if (stockItem && canEditConex(stockItem.conexId)) {
+          if (nextDone) {
+            const want = Math.max(1, Number(entry.qtyNeeded) || 1);
+            const deduct = Math.min(stockItem.qty, want);
+            entry.deductedQty = deduct;
+            entry.deductedItemId = stockItem.id;
+            if (deduct > 0) {
+              setQty(stockItem, stockItem.qty - deduct, 'adj', `Package ${pkg.name}`);
+            }
+          } else if (entry.deductedQty > 0) {
+            const restore = entry.deductedQty;
+            entry.deductedQty = 0;
+            setQty(stockItem, stockItem.qty + restore, 'adj', `Returned from ${pkg.name}`);
+          }
+        }
+
         pkg.updatedAt = Date.now();
         syncPackageToCloud(pkg);
         save();
