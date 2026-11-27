@@ -3386,6 +3386,25 @@ button.list-item:active {
   min-width: 0;
 }
 
+.pkg-check-tag {
+  display: inline-block;
+  align-self: flex-start;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(28, 78, 122, 0.12);
+  color: var(--color-primary);
+  margin-bottom: 3px;
+}
+
+.pkg-mat-header-in {
+  width: 100%;
+  margin-top: 6px;
+}
+
 .pkg-check-name {
   font-size: 13.5px;
   font-weight: 600;

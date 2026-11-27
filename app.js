@@ -1311,12 +1311,23 @@
     return w && w.done ? 'completed' : 'untouched';
   }
 
-  function formatChecklistSpec(it) {
+  function formatChecklistSpec(it, titleText = '') {
     if (!it) return '';
+    const tLow = String(titleText || '').toLowerCase();
+    const hasSize = it.size && tLow.includes(String(it.size).toLowerCase());
+    const hasType = it.type && tLow.includes(String(it.type).toLowerCase());
     if (it.category === 'Gaskets') {
-      return [it.size ? `Flange ${it.size}` : '', it.type, it.material].filter(Boolean).join(' · ');
+      return [
+        (!hasSize && it.size) ? `Flange ${it.size}` : '',
+        !hasType ? it.type : '',
+        it.material
+      ].filter(Boolean).join(' · ');
     }
-    return [it.size, it.material, it.type].filter(Boolean).join(' · ');
+    return [
+      !hasSize ? it.size : '',
+      it.material,
+      !hasType ? it.type : ''
+    ].filter(Boolean).join(' · ');
   }
 
   function openPackageDetail(pkgId, editingNoteId = null) {
@@ -1342,13 +1353,14 @@
       ? pkg.checklist.map((c) => {
           const linked = c.itemId ? S.items.find((x) => x.id === c.itemId) : null;
           const displaySpec = linked
-            ? formatChecklistSpec(linked)
+            ? formatChecklistSpec(linked, c.name)
             : (c.spec || '');
           return `
           <div class="pkg-check-row ${c.done ? 'is-done' : ''}">
             <button type="button" class="pkg-check-toggle" data-pkg-chk="${esc(c.id)}" aria-pressed="${Boolean(c.done)}" aria-label="Toggle ${esc(c.name)}" ${isSoldLocked ? 'disabled' : ''}>
               <span class="pkg-checkbox">${c.done ? ICON.check : ''}</span>
               <span class="pkg-check-copy">
+                ${c.header ? `<span class="pkg-check-tag">${esc(c.header)}</span>` : ''}
                 <span class="pkg-check-name">${esc(c.name)}</span>
                 ${displaySpec ? `<span class="pkg-check-spec">${esc(displaySpec)}</span>` : ''}
               </span>
@@ -1465,6 +1477,7 @@
             <input id="pkg-mat-qty" type="number" min="1" step="1" value="1" inputmode="numeric" aria-label="Quantity needed">
             <button type="button" class="btn btn-primary pkg-add-mat-btn" id="pkg-mat-add">Add</button>
           </div>
+          <input id="pkg-mat-header" class="pkg-mat-header-in" type="text" placeholder="Tag header (optional, e.g. North Header / Line 204)" aria-label="Optional header tag">
         </div>`}
       </div>
 
@@ -1630,6 +1643,7 @@
     // Add material to checklist
     const addMat = () => {
       const rawName = $('#pkg-mat-name').value.trim();
+      const rawHeader = ($('#pkg-mat-header')?.value || '').trim();
       const qtyNeeded = Math.max(1, parseInt($('#pkg-mat-qty').value, 10) || 1);
       if (!rawName) { $('#pkg-mat-name').focus(); return; }
       const pickedId = $('#pkg-mat-pick') ? $('#pkg-mat-pick').value : '';
@@ -1638,7 +1652,8 @@
       pkg.checklist.push({
         id: pkgUid('c'),
         name: rawName,
-        spec: picked ? formatChecklistSpec(picked) : '',
+        header: rawHeader,
+        spec: picked ? formatChecklistSpec(picked, rawName) : '',
         qtyNeeded,
         unit: picked?.unit || 'ea',
         itemId: picked?.id || '',
