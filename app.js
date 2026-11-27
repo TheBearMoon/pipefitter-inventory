@@ -521,7 +521,7 @@
     const activePkgs = visPkgs.filter((p) => p.status !== 'completed').length;
 
     const titles = {
-      stock: ['Pipefitter Inventory', stockSub],
+      stock: ['Pipe Quest', stockSub],
       reorder: ['Reorder List', n ? `${n} part${n === 1 ? '' : 's'} at or below minimum` : 'Everything above minimum'],
       status: ['Package Status', `${visPkgs.length} package${visPkgs.length === 1 ? '' : 's'} · ${activePkgs} open`],
       activity: ['Activity Log', `${scopeLogs.length} recorded update${scopeLogs.length === 1 ? '' : 's'}`],
@@ -3812,10 +3812,10 @@
 
   function reorderText() {
     const hdr = S.activeConex === 'all'
-      ? 'Pipefitter Inventory — All Conex Reorder List'
+      ? 'Pipe Quest — All Conex Reorder List'
       : S.activeConex.startsWith('team:')
-        ? `Pipefitter Inventory — ${teamById(S.activeConex.slice(5)).name} Reorder List`
-        : `Pipefitter Inventory — ${conexById(S.activeConex).name} (${teamById(conexById(S.activeConex).teamId).name}) Reorder List`;
+        ? `Pipe Quest — ${teamById(S.activeConex.slice(5)).name} Reorder List`
+        : `Pipe Quest — ${conexById(S.activeConex).name} (${teamById(conexById(S.activeConex).teamId).name}) Reorder List`;
     return hdr + ' (' + new Date().toLocaleDateString() + ')\n\n' +
       lowItems().map((i) => {
         const cx = conexById(i.conexId);
@@ -4095,7 +4095,7 @@
       case 'bk':
         S.lastBackup = Date.now();
         save();
-        download(`pipefitter-inventory-backup-${stamp()}.json`, JSON.stringify({ app: 'Pipefitter Inventory', v: 5, ...S }), 'application/json');
+        download(`pipe-quest-backup-${stamp()}.json`, JSON.stringify({ app: 'Pipe Quest', v: 5, ...S }), 'application/json');
         renderTools();
         toast('Full backup saved');
         break;
@@ -4110,7 +4110,7 @@
       case 'roCsv': exportCSV(lowItems(), `pipefitter-inventory-reorder-${stamp()}.csv`, true); toast('Reorder CSV exported'); break;
       case 'roShare':
         if (navigator.share) {
-          navigator.share({ title: 'Pipefitter Inventory — Reorder List', text: reorderText() }).catch(() => {});
+          navigator.share({ title: 'Pipe Quest — Reorder List', text: reorderText() }).catch(() => {});
         } else {
           copyText(reorderText());
         }
@@ -4305,7 +4305,7 @@
 
     let mode = 'signin';
     const renderAuth = () => {
-      openSheet(mode === 'signin' ? 'Sign in to Pipefitter Inventory' : 'Create Crew Account', `
+      openSheet(mode === 'signin' ? 'Sign in to Pipe Quest' : 'Create Crew Account', `
         <div class="info-callout" style="margin-bottom:14px">
           <span>${mode === 'signin' ? 'Sign in with your username and password to sync your team\'s Conex inventory.' : 'The first account created automatically becomes Admin. Additional accounts start as Crew.'}</span>
         </div>
@@ -4854,7 +4854,7 @@
         const nm = btn.dataset.name || 'this user';
         openSheet('Delete username?', `
           <div class="info-callout">
-            <span>Remove <strong>${esc(nm)}</strong> from Pipefitter Inventory? They will immediately lose access to all teams and Conex boxes.</span>
+            <span>Remove <strong>${esc(nm)}</strong> from Pipe Quest? They will immediately lose access to all teams and Conex boxes.</span>
           </div>
         `,
         `<button type="button" class="btn" style="flex:1" id="du-cancel">Cancel</button>

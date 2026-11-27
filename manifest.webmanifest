@@ -1,6 +1,6 @@
 {
-  "name": "Pipefitter Inventory",
-  "short_name": "Pipefitter",
+  "name": "Pipe Quest",
+  "short_name": "Pipe Quest",
   "description": "Fast, offline-first inventory tracker for gaskets, bolts, U-bolts, J-bolts, pipe plugs, and valves.",
   "start_url": "./",
   "scope": "./",

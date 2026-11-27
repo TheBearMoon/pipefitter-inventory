@@ -1,5 +1,5 @@
 {
-  "name": "pipefitter-inventory-api",
+  "name": "pipe-quest-api",
   "version": "1.0.0",
   "private": true,
   "dependencies": {
