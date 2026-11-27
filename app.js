@@ -72,12 +72,28 @@
   const DEF_SPEC = ['Size', 'e.g. 1"', 'Material', 'e.g. Carbon steel', 'Type / Rating', 'e.g. Standard'];
   const DEF_CATS = ['Gaskets', 'Bolts', 'U-Bolts', 'J-Bolts', 'Pipe Plugs', 'Valves'];
   const UNITS = ['ea', 'box', 'pack', 'set', 'ft', 'bag'];
-  const SORT_LABELS = { name: 'Name', low: 'Low first', qty: 'Qty', bin: 'Bin', recent: 'Recent' };
+  const SORT_LABELS = {
+    name: 'A–Z',
+    name_desc: 'Z–A',
+    qty_desc: 'High–Low',
+    qty: 'Low–High',
+    low: 'Low first',
+    size: 'Size ↑',
+    size_desc: 'Size ↓',
+    bin: 'Bin A–Z',
+    bin_desc: 'Bin Z–A',
+    recent: 'Recent'
+  };
   const SORT_OPTIONS = [
     ['name', 'Name (A–Z)'],
-    ['low', 'Low stock first'],
+    ['name_desc', 'Name (Z–A)'],
+    ['qty_desc', 'Quantity (high to low)'],
     ['qty', 'Quantity (low to high)'],
-    ['bin', 'Bin location'],
+    ['low', 'Low / Out of stock first'],
+    ['size', 'Size (small to large)'],
+    ['size_desc', 'Size (large to small)'],
+    ['bin', 'Bin location (A–Z)'],
+    ['bin_desc', 'Bin location (Z–A)'],
     ['recent', 'Recently updated']
   ];
 
@@ -509,16 +525,44 @@
         .includes(q);
     });
 
+    const parseSizeNum = (s) => {
+      const str = String(s || '').trim();
+      if (!str) return null;
+      const mixed = str.match(/(\d+)\s*[- ]\s*(\d+)\s*\/\s*(\d+)/);
+      if (mixed && Number(mixed[3])) return Number(mixed[1]) + Number(mixed[2]) / Number(mixed[3]);
+      const frac = str.match(/(\d+)\s*\/\s*(\d+)/);
+      if (frac && Number(frac[2])) return Number(frac[1]) / Number(frac[2]);
+      const num = str.match(/(\d+(?:\.\d+)?)/);
+      return num ? Number(num[1]) : null;
+    };
+    const cmpSize = (a, b, desc) => {
+      const sa = parseSizeNum(a.size);
+      const sb = parseSizeNum(b.size);
+      if (sa === null && sb === null) return a.name.localeCompare(b.name);
+      if (sa === null) return 1;
+      if (sb === null) return -1;
+      return (desc ? sb - sa : sa - sb) || a.name.localeCompare(b.name);
+    };
     const sorters = {
       name: (a, b) => a.name.localeCompare(b.name),
-      low: (a, b) => statusRank(a) - statusRank(b) || a.name.localeCompare(b.name),
+      name_desc: (a, b) => b.name.localeCompare(a.name),
+      qty_desc: (a, b) => b.qty - a.qty || a.name.localeCompare(b.name),
       qty: (a, b) => a.qty - b.qty || a.name.localeCompare(b.name),
-      bin: (a, b) => (a.bin || '~').localeCompare(b.bin || '~', undefined, { numeric: true }),
+      low: (a, b) => statusRank(a) - statusRank(b) || a.qty - b.qty || a.name.localeCompare(b.name),
+      size: (a, b) => cmpSize(a, b, false),
+      size_desc: (a, b) => cmpSize(a, b, true),
+      bin: (a, b) => (a.bin || '~').localeCompare(b.bin || '~', undefined, { numeric: true }) || a.name.localeCompare(b.name),
+      bin_desc: (a, b) => {
+        if (!a.bin && !b.bin) return a.name.localeCompare(b.name);
+        if (!a.bin) return 1;
+        if (!b.bin) return -1;
+        return b.bin.localeCompare(a.bin, undefined, { numeric: true }) || a.name.localeCompare(b.name);
+      },
       recent: (a, b) => (b.updated || 0) - (a.updated || 0)
     };
     items.sort(sorters[S.sort] || sorters.name);
 
-    $('#sortLabel').textContent = SORT_LABELS[S.sort] || 'Name';
+    $('#sortLabel').textContent = SORT_LABELS[S.sort] || 'A–Z';
     $('#qClear').classList.toggle('is-visible', Boolean(query));
     const lblEl = $('#listLabel');
     lblEl.textContent = q ? `${items.length} match${items.length === 1 ? '' : 'es'}` : `${items.length} shown`;
