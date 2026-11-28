@@ -1,12 +1,12 @@
-const CACHE = 'pipequest-v63';
+const CACHE = 'pipequest-v64';
 const PRECACHE = [
   './',
   './index.html',
-  './base.css?v=63',
-  './style.css?v=63',
-  './firebase-config.js?v=63',
-  './firebase-sync.js?v=63',
-  './app.js?v=63',
+  './base.css?v=64',
+  './style.css?v=64',
+  './firebase-config.js?v=64',
+  './firebase-sync.js?v=64',
+  './app.js?v=64',
   './manifest.webmanifest',
   './favicon.png',
   './apple-touch-icon.png',

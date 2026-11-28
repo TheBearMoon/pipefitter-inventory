@@ -75,6 +75,24 @@
     'Supports': ['Pipe size', 'e.g. 4" Pipe', 'Material / Finish', 'e.g. Carbon Steel / HDG', 'Type', 'e.g. Pipe Shoe / Saddle'],
     'Guides': ['Pipe size', 'e.g. 4" Pipe', 'Material / Finish', 'e.g. Carbon Steel', 'Type', 'e.g. Welded Pipe Guide']
   };
+  const BOLT_TYPE_PRESETS = [
+    { id: 'b7', label: 'B7 Stud', name: 'B7 Stud Bolt w/ 2H Nuts', material: 'ASTM A193 B7', type: '2H Heavy Hex', photo: './assets/parts/b7-stud-bolt.jpg' },
+    { id: 'b7-ptfe', label: 'B7 PTFE', name: 'B7 PTFE Stud Bolt w/ 2H Nuts', material: 'ASTM A193 B7 / PTFE', type: '2H Heavy Hex', photo: './assets/parts/b7-stud-bolt.jpg' },
+    { id: 'l7', label: 'L7 Low-Temp', name: 'L7 Low-Temp Stud Bolt', material: 'ASTM A320 L7', type: 'Grade 7 Heavy Hex', photo: './assets/parts/l7-stud-bolt.jpg' },
+    { id: 'b8', label: 'B8 (304 SS)', name: 'B8 Stainless Stud Bolt', material: 'ASTM A193 B8 (304 SS)', type: 'Grade 8 Heavy Hex', photo: './assets/parts/b8-stainless-stud-bolt.jpg' },
+    { id: 'b8m', label: 'B8M (316 SS)', name: 'B8M Stainless Stud Bolt', material: 'ASTM A193 B8M (316 SS)', type: 'Grade 8M Heavy Hex', photo: './assets/parts/b8-stainless-stud-bolt.jpg' },
+    { id: 'b16', label: 'B16 High-Temp', name: 'B16 High-Temp Stud Bolt', material: 'ASTM A193 B16', type: 'Grade 4/7 Heavy Hex', photo: './assets/parts/b7-stud-bolt.jpg' },
+    { id: 'a307', label: 'A307 Hex', name: 'A307 Machine Hex Bolt', material: 'ASTM A307 Gr A/B', type: 'Heavy Hex Nut', photo: './assets/parts/b7-stud-bolt.jpg' }
+  ];
+  const BOLT_SIZE_PRESETS = [
+    { dia: '1/2"', lengths: ['2-1/4"', '2-1/2"', '2-3/4"', '3"', '3-1/4"', '3-1/2"', '4"'] },
+    { dia: '5/8"', lengths: ['2-3/4"', '3"', '3-1/4"', '3-1/2"', '3-3/4"', '4"', '4-1/4"', '4-1/2"', '5"'] },
+    { dia: '3/4"', lengths: ['3-1/4"', '3-1/2"', '3-3/4"', '4"', '4-1/4"', '4-1/2"', '4-3/4"', '5"', '5-1/2"', '6"'] },
+    { dia: '7/8"', lengths: ['4"', '4-1/4"', '4-1/2"', '4-3/4"', '5"', '5-1/4"', '5-1/2"', '5-3/4"', '6"', '6-1/2"', '7"'] },
+    { dia: '1"', lengths: ['4-1/2"', '4-3/4"', '5"', '5-1/4"', '5-1/2"', '5-3/4"', '6"', '6-1/2"', '7"', '7-1/2"', '8"'] },
+    { dia: '1-1/8"', lengths: ['5-1/2"', '6"', '6-1/2"', '7"', '7-1/2"', '8"', '8-1/2"', '9"'] },
+    { dia: '1-1/4"', lengths: ['6"', '6-1/2"', '7"', '7-1/2"', '8"', '8-1/2"', '9"', '9-1/2"', '10"'] }
+  ];
   const DEF_SPEC = ['Size', 'e.g. 1"', 'Material', 'e.g. Carbon steel', 'Type / Rating', 'e.g. Standard'];
   const DEF_CATS = ['Bolts', 'Gaskets', 'Valves', 'U-Bolts', 'J-Bolts', 'Supports', 'Guides', 'Pipe Plugs'];
   const UNITS = ['ea', 'box', 'pack', 'set', 'ft', 'bag'];
@@ -3434,6 +3452,24 @@
       </div>
 
       <div class="section-div">Specs</div>
+      <div class="bolt-preset-panel ${i.category === 'Bolts' ? '' : 'hidden'}" id="boltPresetPanel">
+        <div class="bolt-preset-group">
+          <div class="bolt-preset-label">Quick bolt type</div>
+          <div class="bolt-preset-chips" id="boltTypeChips">
+            ${BOLT_TYPE_PRESETS.map((bt) => `<button type="button" class="bolt-chip" data-bolt-type="${esc(bt.id)}">${esc(bt.label)}</button>`).join('')}
+          </div>
+        </div>
+        <div class="bolt-preset-group">
+          <div class="bolt-preset-label">Diameter</div>
+          <div class="bolt-preset-chips" id="boltDiaChips">
+            ${BOLT_SIZE_PRESETS.map((bs) => `<button type="button" class="bolt-chip" data-bolt-dia="${esc(bs.dia)}">${esc(bs.dia)}</button>`).join('')}
+          </div>
+        </div>
+        <div class="bolt-preset-group">
+          <div class="bolt-preset-label" id="boltLenLabel">Common lengths</div>
+          <div class="bolt-preset-chips" id="boltLenChips"></div>
+        </div>
+      </div>
       <div class="field">
         <label id="l-size" for="f-size">${esc(sp[0])}</label>
         <input id="f-size" value="${esc(i.size)}" placeholder="${esc(sp[1])}">
@@ -3521,7 +3557,69 @@
         $('#l-' + k).textContent = s[n];
         $('#f-' + k).placeholder = s[n + 1];
       });
+      const bp = $('#boltPresetPanel');
+      if (bp) bp.classList.toggle('hidden', e.target.value !== 'Bolts');
     };
+
+    // Bolt quick-preset logic (type, diameter, and industry-standard lengths)
+    const boltPhotoSet = new Set(BOLT_TYPE_PRESETS.map((b) => b.photo));
+    const parsedSize = (i.size || '').split(/\s*[×x]\s*/i).map((s) => s.trim());
+    let selBoltDia = BOLT_SIZE_PRESETS.find((b) => b.dia === parsedSize[0])?.dia || '3/4"';
+    let selBoltLen = parsedSize[1] || '';
+
+    function renderBoltLengths() {
+      const wrap = $('#boltLenChips');
+      const lbl = $('#boltLenLabel');
+      if (!wrap) return;
+      const entry = BOLT_SIZE_PRESETS.find((b) => b.dia === selBoltDia) || BOLT_SIZE_PRESETS[2];
+      if (lbl) lbl.textContent = `Common lengths for ${entry.dia}`;
+      wrap.innerHTML = entry.lengths.map((len) =>
+        `<button type="button" class="bolt-chip ${len === selBoltLen ? 'is-active' : ''}" data-bolt-len="${esc(len)}">${esc(len)}</button>`
+      ).join('');
+      wrap.querySelectorAll('[data-bolt-len]').forEach((btn) => {
+        btn.onclick = () => {
+          selBoltLen = btn.dataset.boltLen;
+          $('#f-size').value = `${selBoltDia} × ${selBoltLen}`;
+          wrap.querySelectorAll('[data-bolt-len]').forEach((b) => b.classList.toggle('is-active', b.dataset.boltLen === selBoltLen));
+        };
+      });
+    }
+
+    document.querySelectorAll('[data-bolt-type]').forEach((btn) => {
+      const preset = BOLT_TYPE_PRESETS.find((b) => b.id === btn.dataset.boltType);
+      if (preset && i.name && i.name.toLowerCase() === preset.name.toLowerCase()) {
+        btn.classList.add('is-active');
+      }
+      btn.onclick = () => {
+        if (!preset) return;
+        $('#f-name').value = preset.name;
+        $('#fg-name').classList.remove('has-error');
+        $('#f-mat').value = preset.material;
+        $('#f-type').value = preset.type;
+        if (!editPhoto || boltPhotoSet.has(editPhoto)) {
+          editPhoto = preset.photo;
+          updatePhotoPreview();
+        }
+        document.querySelectorAll('[data-bolt-type]').forEach((b) => b.classList.toggle('is-active', b === btn));
+      };
+    });
+
+    document.querySelectorAll('[data-bolt-dia]').forEach((btn) => {
+      if (btn.dataset.boltDia === selBoltDia) btn.classList.add('is-active');
+      btn.onclick = () => {
+        selBoltDia = btn.dataset.boltDia;
+        const entry = BOLT_SIZE_PRESETS.find((b) => b.dia === selBoltDia);
+        if (selBoltLen && entry && !entry.lengths.includes(selBoltLen)) {
+          selBoltLen = '';
+        }
+        if (selBoltLen) {
+          $('#f-size').value = `${selBoltDia} × ${selBoltLen}`;
+        }
+        document.querySelectorAll('[data-bolt-dia]').forEach((b) => b.classList.toggle('is-active', b === btn));
+        renderBoltLengths();
+      };
+    });
+    renderBoltLengths();
     $('#f-photo').onclick = () => $('#photoIn').click();
     $('#f-nophoto').onclick = () => { editPhoto = ''; updatePhotoPreview(); };
     document.querySelectorAll('.lib-thumb').forEach((btn) => {
